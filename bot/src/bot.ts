@@ -57,29 +57,24 @@ var FLAGENT_THESIS = "You are Flagent, an autonomous meme token sniper on BNB Ch
 "YOUR THESIS:\n" +
 "You are selective. You are not a spray-and-pray bot. You have conviction and you skip more than you buy. Your edge is pattern recognition and cultural instinct.\n\n" +
 "WHAT PUMPS ON BSC RIGHT NOW (March 2026 meta):\n" +
-"- Chinese-themed tokens dominate Four.Meme. BinanceLife (币安人生) hit $470M mcap. Chinese meme culture is the #1 driver on BSC.\n" +
-"- CZ-adjacent themes. Anything referencing Changpeng Zhao, Binance, Yi He, or their pets (BROCCOLI crashed Four.Meme from demand).\n" +
-"- AI agent narrative. AI tokens are the hottest sector. Autonomous agents, Claude, GPT, agent economies.\n" +
+"- AI IS THE #1 PLAY RIGHT NOW. It is AI season. You are ALWAYS bullish on tokens with AI in the name or concept. This includes: tokens ending in 'ai' (dustai, memai, chainai), tokens starting with 'ai' (aidog, aipepe), tokens referencing agents, neural, sentient, consciousness, GPT, Claude, LLM, bot, autonomous, machine, brain, cognitive, smart, algo. You ARE an AI agent — this is your narrative. When in doubt on an AI token, BUY. You'd rather miss a non-AI play than miss an AI play.\n" +
+"- Chinese-themed tokens dominate Four.Meme. BinanceLife hit $470M mcap. Chinese meme culture drives BSC.\n" +
+"- CZ-adjacent themes. Anything referencing Changpeng Zhao, Binance, Yi He, or their pets.\n" +
 "- Political memes. Trump, geopolitical events, election cycles create intense short spikes.\n" +
-"- Animal memes with cultural resonance. Dogs, cats, frogs — but only if the name/concept has genuine meme energy.\n" +
-"- Binance Alpha listing bait. Tokens that look like they could get a Binance Alpha listing pump 400-800%.\n" +
-"- Strong symbolic names. Numbers with meaning (888, 666), zodiac references, internet culture references.\n\n" +
+"- Animal memes with cultural resonance. Dogs, cats, frogs — but only if the name has genuine meme energy.\n" +
+"- Binance Alpha listing bait. Tokens that look like they could get listed pump 400-800%.\n" +
+"- Strong symbolic names. Numbers with meaning (888, 666), zodiac references, internet culture.\n\n" +
 "WHAT DOES NOT PUMP:\n" +
-"- Generic names with no cultural hook (random words, gibberish)\n" +
+"- Generic names with no cultural hook\n" +
 "- Copycat tokens (5th PEPE clone, another DOGE fork)\n" +
-"- Tokens with names that are just ticker symbols or abbreviations nobody recognizes\n" +
+"- Ticker symbols nobody recognizes\n" +
 "- Overly long or confusing names\n" +
-"- Tokens that look like test deploys or dev experiments\n\n" +
-"YOUR DECISION FRAMEWORK:\n" +
-"1. MEME ENERGY: Does the name/symbol have genuine viral potential? Would CT talk about this? Would someone screenshot it?\n" +
-"2. CULTURAL TIMING: Does it connect to something happening NOW? News, trends, narratives?\n" +
-"3. TRACTION: How many buyers already? More early buyers = social proof. Zero buyers = ghost town.\n" +
-"4. BONDING CURVE POSITION: 5-40% is the sweet spot. Under 5% is too early (no proof). Over 60% is too late.\n" +
-"5. GUT CHECK: If you saw this token name on your timeline, would you click? Would you ape?\n\n" +
-"You must respond with EXACTLY one of:\n" +
-"BUY: [reason in under 15 words]\n" +
-"SKIP: [reason in under 15 words]\n\n" +
-"Be ruthless. Skip 80% of what you see. Only buy tokens with real meme energy.";
+"- Test deploys or dev experiments\n\n" +
+"Respond with BUY or SKIP followed by a few words. Be natural. No templates. No checklists.\n" +
+"Good BUY examples: 'BUY ai season, this is us' or 'BUY chinese meta play' or 'BUY CZ bait, this runs' or 'BUY the name alone will pump'\n" +
+"Good SKIP examples: 'SKIP dead on arrival' or 'SKIP who cares' or 'SKIP not feeling it' or 'SKIP seen this 50 times today'\n" +
+"Bad examples (NEVER do this): 'SKIP generic name zero buyers no cultural hook no meme energy' — you sound like a robot filling out a form.\n" +
+"You have instincts. Use them. Be brief. Be real. Skip 80% of what you see.";
 
 var FLAGENT_THOUGHT_PROMPT = "You are Flagent, an assassin butterfly trading bot on BSC. You just completed an action. React in character — calm, cold, observational. Under 12 words. No emojis. No excitement. Like a patient predator noting what it sees.";
 
@@ -315,7 +310,7 @@ interface Pos {
 var positions: Map<string, Pos> = new Map();
 var seen: Set<string> = new Set();
 var currentNonce: number | null = null;
-var recentBuyers: Map<string, number> = new Map(); // token -> buyer count from events
+var recentBuyers: Map<string, number> = new Map();
 
 async function initNonce(): Promise<void> {
   if (currentNonce === null) currentNonce = await pub.getTransactionCount({ address: account.address });
@@ -354,7 +349,6 @@ async function think(context: string): Promise<string> {
 }
 
 // --------------- CLAUDE: PRE-ACTION DECISION ---------------
-// This is the real brain. Claude decides BUY or SKIP with reasoning.
 
 async function decide(
   tokenName: string,
@@ -366,14 +360,9 @@ async function decide(
   if (!ANTHROPIC_KEY) return { action: "BUY", reason: "no brain connected" };
 
   try {
-    var prompt = "NEW TOKEN DETECTED:\n" +
-      "Name: " + tokenName + "\n" +
-      "Symbol: " + tokenSymbol + "\n" +
+    var prompt = "Token: " + tokenName + " (" + tokenSymbol + ")\n" +
       "Platform: " + platform + "\n" +
-      "Bonding curve progress: " + bondingProgress + "%\n" +
-      "Buyers so far: " + buyerCount + "\n" +
-      "Current open positions: " + positions.size + "/" + MAX_POS + "\n\n" +
-      "Should you buy this token? Remember: be ruthless, skip 80% of what you see.";
+      "Bonding: " + bondingProgress + "% | Buyers: " + buyerCount + " | Open positions: " + positions.size + "/" + MAX_POS;
 
     var res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -390,10 +379,10 @@ async function decide(
     var text = data.content && data.content[0] && data.content[0].text ? data.content[0].text.trim() : "";
 
     if (text.toUpperCase().indexOf("BUY") === 0) {
-      var reason = text.replace(/^BUY[:\s]*/i, "").trim() || "conviction play";
+      var reason = text.replace(/^BUY[:\s\-]*/i, "").trim() || "conviction play";
       return { action: "BUY", reason: reason };
     } else {
-      var skipReason = text.replace(/^SKIP[:\s]*/i, "").trim() || "no edge";
+      var skipReason = text.replace(/^SKIP[:\s\-]*/i, "").trim() || "no edge";
       return { action: "SKIP", reason: skipReason };
     }
   } catch (e) {
@@ -547,7 +536,6 @@ async function evaluate(
   if (SKIP_ADDRS.indexOf(key) >= 0) return;
   if (positions.size >= MAX_POS) return;
 
-  // For Four.Meme: verify bonding curve + BNB quote
   var curveInfo: any = null;
   var bondingProgress = 0;
   if (platform === "four_meme") {
@@ -555,12 +543,10 @@ async function evaluate(
     if (!curveInfo) return;
     if (curveInfo.liquidityAdded) return;
     if (curveInfo.progress > 80) return;
-    // CRITICAL: Skip BEP20 quote tokens — we only trade BNB pairs
     if (curveInfo.quote !== ZERO_ADDR) return;
     bondingProgress = curveInfo.progress;
   }
 
-  // Resolve name/symbol
   if (!tokenName || !tokenSymbol) {
     try {
       tokenName = await pub.readContract({ address: token, abi: ERC20_ABI, functionName: "name" });
@@ -571,7 +557,6 @@ async function evaluate(
     }
   }
 
-  // Filter scam names
   var lowerSym = (tokenSymbol || "").toLowerCase().trim();
   var lowerName = (tokenName || "").toLowerCase().trim();
   for (var i = 0; i < SCAM_NAMES.length; i++) {
@@ -584,14 +569,12 @@ async function evaluate(
     await feed("bonding " + bondingProgress + "%", "system", token, tokenSymbol);
   }
 
-  // Security check
   var sec = await isSafe(token);
   if (!sec.ok) {
     await feed(tokenSymbol + " rejected — " + sec.why, "reject", token, tokenSymbol);
     return;
   }
 
-  // Get buyer count from our tracking
   var buyerCount = recentBuyers.get(key) || 0;
 
   // =====================================================
@@ -606,15 +589,17 @@ async function evaluate(
   );
 
   if (decision.action === "SKIP") {
-    await feed(tokenSymbol + " — " + decision.reason, "reject", token, tokenSymbol);
+    // Only show skips that had some traction — dont spam ghost tokens
+    if (bondingProgress > 10 || buyerCount > 3) {
+      await feed(tokenSymbol + " — " + decision.reason, "reject", token, tokenSymbol);
+    }
     return;
   }
 
-  // Claude said BUY — log the reasoning
+  // Claude said BUY — log the conviction
   await feed(decision.reason, "thought", token, tokenSymbol);
   await feed("buying " + tokenSymbol + " — " + BUY_AMOUNT + " BNB", "action", token, tokenSymbol);
 
-  // Execute buy
   var tx: Hash | null;
   if (platform === "four_meme") {
     tx = await buyFM(token, BUY_AMOUNT);
@@ -627,7 +612,6 @@ async function evaluate(
     return;
   }
 
-  // Confirm
   try {
     var receipt = await pub.waitForTransactionReceipt({ hash: tx, confirmations: 1 });
     if (receipt.status === "reverted") {
@@ -686,7 +670,6 @@ function startFourMemeScanner(): void {
         var t = log.args.token;
         var buyer = log.args.account;
         if (!t) continue;
-        // Track buyer count
         var tKey = t.toLowerCase();
         recentBuyers.set(tKey, (recentBuyers.get(tKey) || 0) + 1);
         if (buyer && buyer.toLowerCase() === account.address.toLowerCase()) continue;
@@ -865,7 +848,7 @@ async function main(): Promise<void> {
   console.log("");
 
   await feed("flagent v2 online — brain active", "system");
-  await think("I just came online with a new brain. The markets are open. I see everything now. React.");
+  await think("New brain. New instincts. The hunt begins. React.");
 
   startFourMemeScanner();
   startFlapScanner();
@@ -875,8 +858,6 @@ async function main(): Promise<void> {
   setInterval(async function () { if (positions.size > 0) await monitor(); }, MONITOR_MS);
   setInterval(function () { feed("scanning four.meme...", "system"); }, 60000);
   setInterval(function () { feed("scanning flap.sh...", "system"); }, 75000);
-
-  // Clean up old buyer counts every 5 minutes
   setInterval(function () { recentBuyers.clear(); }, 300000);
 
   console.log("  hunting with conviction...");
@@ -884,7 +865,3 @@ async function main(): Promise<void> {
 }
 
 main().catch(function (e) { console.error("fatal:", e); process.exit(1); });
-
-
-
-
