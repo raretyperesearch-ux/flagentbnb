@@ -7,6 +7,7 @@ var HEADERS = { apikey: KEY, Authorization: "Bearer " + KEY };
 var VIDEO_URL = "https://seartddspffufwiqzwvh.supabase.co/storage/v1/object/public/assets/flagent-bg.mp4";
 var GITHUB_URL = "https://github.com/raretyperesearch-ux/flagentbnb";
 var BSCSCAN_WALLET = "https://bscscan.com/address/0x6c8C4C62183B61E9dd0095e821B0F857b555b32d";
+var TOKEN_URL = "https://flap.sh/bnb/0xbc443965124fb401fa814550e3f7ecb825527777";
 
 var COL = { system:"#3a3530", detect:"#c9a84c", thought:"#6b6255", action:"#c9a84c", confirm:"#7a9a5a", monitor:"#4a4539", reject:"#6a4a3a" };
 var MOCK = [
@@ -175,10 +176,16 @@ export default function Home() {
       <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", background: "radial-gradient(ellipse at 50% 45%, #c9a84c0a 0%, transparent 55%)" }}/>
       <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", background: "linear-gradient(90deg, #05050399 0%, transparent 30%, transparent 70%, #05050399 100%)" }}/>
 
+      {/* HEADER */}
       <div style={{ position: "relative", zIndex: 2, padding: "24px 20px 0", textAlign: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 6 }}>
           <span style={{ fontFamily: "'Cinzel',serif", fontSize: 16, fontWeight: 700, letterSpacing: "0.22em", color: "#c9a84c", opacity: 0.7 }}>FLAGENT</span>
           <span style={{ width: 4, height: 4, borderRadius: "50%", background: live ? "#7a9a5a" : "#6a4a3a", animation: "breathe 3s ease-in-out infinite" }}/>
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <a href={TOKEN_URL} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.15em", color: "#c9a84c", opacity: 0.4, transition: "opacity 0.2s" }}>
+            $FLAGENT
+          </a>
         </div>
         <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: "#3a3530", display: "flex", justifyContent: "center", gap: 16 }}>
           <a href={walletUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#4a4539", transition: "opacity 0.2s" }}>
@@ -189,6 +196,7 @@ export default function Home() {
         </div>
       </div>
 
+      {/* COMMAND LINES */}
       <div style={{ flex: 1, position: "relative", zIndex: 2, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", padding: "0 16px 44px", maxWidth: 540, margin: "0 auto", width: "100%" }}>
         {lines.map(function(l) {
           var s = getStyle(l);
@@ -221,6 +229,7 @@ export default function Home() {
         })}
       </div>
 
+      {/* FOOTER */}
       <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 20px 16px" }}>
         <div style={{ display: "flex", justifyContent: "center", gap: 20, fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.15em" }}>
           <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#5a5347", transition: "opacity 0.2s" }}>
