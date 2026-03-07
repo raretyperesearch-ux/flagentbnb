@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 var SB = "https://seartddspffufwiqzwvh.supabase.co";
 var KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNlYXJ0ZGRzcGZmdWZ3aXF6d3ZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NzE5OTksImV4cCI6MjA4ODI0Nzk5OX0.0QtBuq9iMS0nuCsurfkatV22cse9nwRss_wLqsYsg_Y";
@@ -25,7 +25,44 @@ export default function Home() {
   var live = _live[0], setLive = _live[1];
   var _tick = useState(0);
   var setTick = _tick[1];
+  var videoRef = useRef(null);
 
+  // Force autoplay on all browsers
+  useEffect(function() {
+    var vid = videoRef.current;
+    if (!vid) return;
+
+    function tryPlay() {
+      if (vid) {
+        vid.muted = true;
+        var p = vid.play();
+        if (p && p.catch) {
+          p.catch(function() {
+            // If autoplay still blocked, retry on first user interaction
+            function playOnInteract() {
+              if (vid) vid.play();
+              document.removeEventListener("touchstart", playOnInteract);
+              document.removeEventListener("click", playOnInteract);
+              document.removeEventListener("scroll", playOnInteract);
+            }
+            document.addEventListener("touchstart", playOnInteract, { once: true });
+            document.addEventListener("click", playOnInteract, { once: true });
+            document.addEventListener("scroll", playOnInteract, { once: true });
+          });
+        }
+      }
+    }
+
+    vid.addEventListener("loadeddata", tryPlay);
+    // Also try immediately in case already loaded
+    if (vid.readyState >= 2) tryPlay();
+
+    return function() {
+      if (vid) vid.removeEventListener("loadeddata", tryPlay);
+    };
+  }, []);
+
+  // Initial load
   useEffect(function() {
     fetch(SB + "/rest/v1/feed?order=created_at.desc&limit=15", { headers: HEADERS })
       .then(function(r) { return r.json(); })
@@ -56,6 +93,7 @@ export default function Home() {
       }).catch(function() {});
   }, []);
 
+  // Poll
   useEffect(function() {
     var poll = setInterval(function() {
       var since = new Date(Date.now() - 5000).toISOString();
@@ -90,11 +128,13 @@ export default function Home() {
     return function() { clearInterval(poll); };
   }, []);
 
+  // Render tick
   useEffect(function() {
     var t = setInterval(function() { setTick(function(n) { return n + 1; }); }, 80);
     return function() { clearInterval(t); };
   }, []);
 
+  // Expire
   useEffect(function() {
     setLines(function(p) { return p.filter(function(l) { return Date.now() - l.born < 20000; }); });
   });
@@ -124,17 +164,19 @@ export default function Home() {
 
       {/* VIDEO BACKGROUND */}
       <video
+        ref={videoRef}
         autoPlay
         loop
         muted
         playsInline
+        preload="auto"
         style={{
           position: "absolute",
           top: 0, left: 0,
           width: "100%", height: "100%",
           objectFit: "cover",
-          opacity: 0.18,
-          filter: "grayscale(30%) brightness(0.7) contrast(1.1)",
+          opacity: 0.25,
+          filter: "grayscale(20%) brightness(0.8) contrast(1.1)",
           pointerEvents: "none",
           zIndex: 0,
         }}
@@ -145,15 +187,15 @@ export default function Home() {
       {/* GRADIENT OVERLAYS */}
       <div style={{
         position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none",
-        background: "linear-gradient(180deg, #050503 0%, #05050360 20%, #05050320 50%, #05050360 80%, #050503 100%)",
+        background: "linear-gradient(180deg, #050503ee 0%, #05050350 25%, #05050318 50%, #05050350 75%, #050503ee 100%)",
       }}/>
       <div style={{
         position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none",
-        background: "radial-gradient(ellipse at 50% 45%, #c9a84c08 0%, transparent 55%)",
+        background: "radial-gradient(ellipse at 50% 45%, #c9a84c0a 0%, transparent 55%)",
       }}/>
       <div style={{
         position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none",
-        background: "linear-gradient(90deg, #050503aa 0%, transparent 30%, transparent 70%, #050503aa 100%)",
+        background: "linear-gradient(90deg, #05050399 0%, transparent 30%, transparent 70%, #05050399 100%)",
       }}/>
 
       {/* HEADER */}
