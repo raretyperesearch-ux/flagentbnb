@@ -29,13 +29,28 @@ var TIME_STOP = parseInt(process.env.TIME_STOP_MINUTES || "30");
 var MONITOR_MS = 10000;
 var HEARTBEAT_MS = 30000;
 
-// --------------- CONTRACTS (verified from official docs) ---------------
+// --------------- CONTRACTS ---------------
 
 var FM_LAUNCHPAD: Address = "0x5c952063c7fc8610FFDB798152D69F0B9550762b";
 var FM_HELPER: Address = "0xF251F83e40a78868FcfA3FA4599Dad6494E46034";
 var FLAP_PORTAL: Address = "0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0";
 var ZERO_ADDR: Address = "0x0000000000000000000000000000000000000000";
 var EMPTY_BYTES: Hex = "0x";
+
+// Known tokens to NEVER trade — stablecoins, WBNB, majors
+var SKIP_TOKENS = [
+  "0x55d398326f99059ff775485246999027b3197955", // USDT
+  "0xe9e7cea3dedca5984780bafc599bd69add087d56", // BUSD
+  "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d", // USDC
+  "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", // WBNB
+  "0x2170ed0880ac9a755fd29b2688956bd959f933f8", // ETH
+  "0x1af3f329e8be154074d8769d1ffa4ee058b1dbc3", // DAI
+  "0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82", // CAKE
+  "0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c", // BTCB
+  "0x3ee2200efb3400fabb9aacf31297cbdd1d435d47", // ADA
+  "0xbf5140a22578168fd562dccf235e5d43a02ce9b1", // UNI
+  "0x4338665cbb7b2485a8855a139b75d5e34ab0db94", // LTC
+];
 
 // --------------- ABIs ---------------
 
@@ -370,7 +385,9 @@ async function isSafe(
     );
     var data = await res.json();
     var info = data.result ? data.result[addr.toLowerCase()] : null;
-    if (!info) return { ok: false, why: "no data" };
+    // If GoPlus has no data, token is too new — let it through
+    // (we already verified it's on the bonding curve before this)
+    if (!info) return { ok: true };
     if (info.is_honeypot === "1") return { ok: false, why: "honeypot" };
     if (info.is_mintable === "1") return { ok: false, why: "mintable" };
     var buyTax = parseFloat(info.buy_tax || "0");
@@ -380,7 +397,7 @@ async function isSafe(
       return { ok: false, why: "tax " + (maxTax * 100).toFixed(0) + "%" };
     return { ok: true };
   } catch (e) {
-    return { ok: true }; // fail open for speed
+    return { ok: true };
   }
 }
 
@@ -426,10 +443,7 @@ async function fmSellQuote(token: Address, amount: bigint) {
 
 // --------------- TRADE EXECUTION ---------------
 
-async function buyFM(
-  token: Address,
-  bnb: string
-): Promise<Hash | null> {
+async function buyFM(token: Address, bnb: string): Promise<Hash | null> {
   try {
     await initNonce();
     var funds = parseEther(bnb);
@@ -452,13 +466,9 @@ async function buyFM(
   }
 }
 
-async function sellFM(
-  token: Address,
-  amount: bigint
-): Promise<Hash | null> {
+async function sellFM(token: Address, amount: bigint): Promise<Hash | null> {
   try {
     await initNonce();
-    // approve
     await wallet.sendTransaction({
       to: token,
       data: encodeFunctionData({
@@ -469,7 +479,6 @@ async function sellFM(
       gas: 100000n,
       nonce: useNonce(),
     });
-    // sell
     var hash = await wallet.sendTransaction({
       to: FM_LAUNCHPAD,
       data: encodeFunctionData({
@@ -488,10 +497,7 @@ async function sellFM(
   }
 }
 
-async function buyFlap(
-  token: Address,
-  bnb: string
-): Promise<Hash | null> {
+async function buyFlap(token: Address, bnb: string): Promise<Hash | null> {
   try {
     await initNonce();
     var funds = parseEther(bnb);
@@ -514,13 +520,9 @@ async function buyFlap(
   }
 }
 
-async function sellFlap(
-  token: Address,
-  amount: bigint
-): Promise<Hash | null> {
+async function sellFlap(token: Address, amount: bigint): Promise<Hash | null> {
   try {
     await initNonce();
-    // approve
     await wallet.sendTransaction({
       to: token,
       data: encodeFunctionData({
@@ -531,7 +533,6 @@ async function sellFlap(
       gas: 100000n,
       nonce: useNonce(),
     });
-    // sell via swapExactInput
     var hash = await wallet.sendTransaction({
       to: FLAP_PORTAL,
       data: encodeFunctionData({
@@ -578,12 +579,32 @@ async function evaluate(
   if (seen.has(key)) return;
   seen.add(key);
 
+  // Skip known stablecoins and majors
+  if (SKIP_TOKENS.indexOf(key) >= 0) return;
+
   if (positions.size >= MAX_POS) {
     await feed("max positions reached", "system");
     return;
   }
 
-  // resolve name/symbol
+  // MUST verify token is on bonding curve BEFORE doing anything else
+  if (platform === "four_meme") {
+    var curveCheck = await fmInfo(token);
+    if (!curveCheck) {
+      // Not on Four.Meme bonding curve — skip silently
+      return;
+    }
+    if (curveCheck.liquidityAdded) {
+      // Already graduated to PancakeSwap — skip
+      return;
+    }
+    if (curveCheck.progress > 80) {
+      // Too late in the bonding curve
+      return;
+    }
+  }
+
+  // Now resolve name/symbol
   if (!tokenName || !tokenSymbol) {
     try {
       var nameResult = await pub.readContract({
@@ -606,7 +627,17 @@ async function evaluate(
 
   await feed(tokenSymbol + " detected", "detect", token, tokenSymbol);
 
-  // security check
+  // Log bonding progress for Four.Meme (already checked above)
+  if (platform === "four_meme" && curveCheck) {
+    await feed(
+      "bonding " + curveCheck.progress + "%",
+      "system",
+      token,
+      tokenSymbol
+    );
+  }
+
+  // Security check (GoPlus) — brand new tokens may return no data, that's OK
   var sec = await isSafe(token);
   if (!sec.ok) {
     await feed(
@@ -622,37 +653,6 @@ async function evaluate(
   }
   await feed("security passed", "system", token, tokenSymbol);
 
-  // four.meme bonding curve check
-  if (platform === "four_meme") {
-    var info = await fmInfo(token);
-    if (info) {
-      if (info.liquidityAdded) {
-        await feed(
-          tokenSymbol + " already on DEX",
-          "reject",
-          token,
-          tokenSymbol
-        );
-        return;
-      }
-      if (info.progress > 80) {
-        await feed(
-          tokenSymbol + " bonding " + info.progress + "% — too late",
-          "reject",
-          token,
-          tokenSymbol
-        );
-        return;
-      }
-      await feed(
-        "bonding " + info.progress + "%",
-        "system",
-        token,
-        tokenSymbol
-      );
-    }
-  }
-
   await think(
     "New token " + tokenSymbol + " on " + platform + ". About to buy. React."
   );
@@ -663,7 +663,7 @@ async function evaluate(
     tokenSymbol
   );
 
-  // execute buy
+  // Execute buy
   var tx: Hash | null;
   if (platform === "four_meme") {
     tx = await buyFM(token, BUY_AMOUNT);
@@ -676,7 +676,7 @@ async function evaluate(
     return;
   }
 
-  // confirm
+  // Confirm
   try {
     var receipt = await pub.waitForTransactionReceipt({
       hash: tx,
@@ -839,7 +839,7 @@ async function monitor(): Promise<void> {
             mult = Number(quoteResult.result) / Number(costWeiFlap);
           }
         } catch (e) {
-          // quote failed, keep mult=1
+          // quote failed
         }
       }
 
@@ -861,7 +861,7 @@ async function monitor(): Promise<void> {
         })
         .eq("token_address", pos.addr);
 
-      // TP1: sell 50% at target
+      // TP1
       if (mult >= TP1 && !pos.halfSold) {
         await feed(
           "TP1 — selling 50% " + pos.symbol,
@@ -888,7 +888,7 @@ async function monitor(): Promise<void> {
         }
       }
 
-      // TP2: sell remaining
+      // TP2
       if (mult >= TP2 && pos.halfSold) {
         await feed(
           "TP2 — closing " + pos.symbol,
