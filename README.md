@@ -1,6 +1,6 @@
 # FLAGENT
 
-Autonomous BSC meme token sniper. Four.Meme + Flap.sh.
+Autonomous BSC meme token sniper agent. Four.Meme + Flap.sh.
 
 ## Structure
 
