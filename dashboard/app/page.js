@@ -5,11 +5,13 @@ var SB = "https://seartddspffufwiqzwvh.supabase.co";
 var KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNlYXJ0ZGRzcGZmdWZ3aXF6d3ZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NzE5OTksImV4cCI6MjA4ODI0Nzk5OX0.0QtBuq9iMS0nuCsurfkatV22cse9nwRss_wLqsYsg_Y";
 var HEADERS = { apikey: KEY, Authorization: "Bearer " + KEY };
 var VIDEO_URL = "https://seartddspffufwiqzwvh.supabase.co/storage/v1/object/public/assets/flagent-bg.mp4";
+var GITHUB_URL = "https://github.com/raretyperesearch-ux/flagentbnb";
+var BSCSCAN_WALLET = "https://bscscan.com/address/0x6c8C4C62183B61E9dd0095e821B0F857b555b32d";
 
 var COL = { system:"#3a3530", detect:"#c9a84c", thought:"#6b6255", action:"#c9a84c", confirm:"#7a9a5a", monitor:"#4a4539", reject:"#6a4a3a" };
 var MOCK = [
   { text:"flagent online", type:"system" },
-  { text:"the markets are open. watching.", type:"thought" },
+  { text:"watching.", type:"thought" },
   { text:"scanning four.meme...", type:"system" },
   { text:"scanning flap.sh...", type:"system" },
 ];
@@ -17,14 +19,13 @@ var MOCK = [
 export default function Home() {
   var _lines = useState([]);
   var lines = _lines[0], setLines = _lines[1];
-  var _stats = useState({ bal:"—", pnl:"—", pos:0 });
+  var _stats = useState({ bal:"—", pnl:"—", pos:0, wallet:"" });
   var stats = _stats[0], setStats = _stats[1];
   var _live = useState(false);
   var live = _live[0], setLive = _live[1];
   var _tick = useState(0);
   var setTick = _tick[1];
 
-  // Initial load
   useEffect(function() {
     fetch(SB + "/rest/v1/feed?order=created_at.desc&limit=15", { headers: HEADERS })
       .then(function(r) { return r.json(); })
@@ -40,7 +41,6 @@ export default function Home() {
           }));
         }
       }).catch(function() {});
-
     fetch(SB + "/rest/v1/bot_status?id=eq.1", { headers: HEADERS })
       .then(function(r) { return r.json(); })
       .then(function(d) {
@@ -50,12 +50,12 @@ export default function Home() {
             bal: b.wallet_balance_bnb ? b.wallet_balance_bnb.toFixed(3) : "—",
             pnl: b.total_pnl_bnb != null ? (b.total_pnl_bnb >= 0 ? "+" : "") + b.total_pnl_bnb.toFixed(3) : "—",
             pos: b.active_positions || 0,
+            wallet: b.wallet_address || "",
           });
         }
       }).catch(function() {});
   }, []);
 
-  // Poll for new feed + status
   useEffect(function() {
     var poll = setInterval(function() {
       var since = new Date(Date.now() - 5000).toISOString();
@@ -73,7 +73,6 @@ export default function Home() {
             });
           }
         }).catch(function() {});
-
       fetch(SB + "/rest/v1/bot_status?id=eq.1", { headers: HEADERS })
         .then(function(r) { return r.json(); })
         .then(function(d) {
@@ -83,6 +82,7 @@ export default function Home() {
               bal: b.wallet_balance_bnb ? b.wallet_balance_bnb.toFixed(3) : "—",
               pnl: b.total_pnl_bnb != null ? (b.total_pnl_bnb >= 0 ? "+" : "") + b.total_pnl_bnb.toFixed(3) : "—",
               pos: b.active_positions || 0,
+              wallet: b.wallet_address || "",
             });
           }
         }).catch(function() {});
@@ -90,13 +90,11 @@ export default function Home() {
     return function() { clearInterval(poll); };
   }, []);
 
-  // Render tick
   useEffect(function() {
     var t = setInterval(function() { setTick(function(n) { return n + 1; }); }, 80);
     return function() { clearInterval(t); };
   }, []);
 
-  // Expire old lines
   useEffect(function() {
     setLines(function(p) { return p.filter(function(l) { return Date.now() - l.born < 20000; }); });
   });
@@ -111,11 +109,17 @@ export default function Home() {
     return { o: 0, c: len };
   }
 
+  var walletUrl = stats.wallet
+    ? "https://bscscan.com/address/" + stats.wallet
+    : BSCSCAN_WALLET;
+
   return (
     <div style={{ height: "100dvh", background: "#050503", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <style>{
         "@keyframes breathe{0%,100%{opacity:.25}50%{opacity:.85}}" +
-        "@keyframes cursor{0%,100%{opacity:1}50%{opacity:0}}"
+        "@keyframes cursor{0%,100%{opacity:1}50%{opacity:0}}" +
+        "a{text-decoration:none;color:inherit}" +
+        "a:hover{opacity:0.6}"
       }</style>
 
       {/* VIDEO BACKGROUND */}
@@ -129,8 +133,8 @@ export default function Home() {
           top: 0, left: 0,
           width: "100%", height: "100%",
           objectFit: "cover",
-          opacity: 0.08,
-          filter: "grayscale(40%) brightness(0.6) contrast(1.1)",
+          opacity: 0.18,
+          filter: "grayscale(30%) brightness(0.7) contrast(1.1)",
           pointerEvents: "none",
           zIndex: 0,
         }}
@@ -141,15 +145,15 @@ export default function Home() {
       {/* GRADIENT OVERLAYS */}
       <div style={{
         position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none",
-        background: "linear-gradient(180deg, #050503 0%, #05050380 25%, #05050340 50%, #05050380 75%, #050503 100%)",
+        background: "linear-gradient(180deg, #050503 0%, #05050360 20%, #05050320 50%, #05050360 80%, #050503 100%)",
       }}/>
       <div style={{
         position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none",
-        background: "radial-gradient(ellipse at 50% 45%, #c9a84c05 0%, transparent 50%)",
+        background: "radial-gradient(ellipse at 50% 45%, #c9a84c08 0%, transparent 55%)",
       }}/>
       <div style={{
         position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none",
-        background: "linear-gradient(90deg, #050503cc 0%, transparent 25%, transparent 75%, #050503cc 100%)",
+        background: "linear-gradient(90deg, #050503aa 0%, transparent 30%, transparent 70%, #050503aa 100%)",
       }}/>
 
       {/* HEADER */}
@@ -159,7 +163,9 @@ export default function Home() {
           <span style={{ width: 4, height: 4, borderRadius: "50%", background: live ? "#7a9a5a" : "#6a4a3a", animation: "breathe 3s ease-in-out infinite" }}/>
         </div>
         <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: "#3a3530", display: "flex", justifyContent: "center", gap: 16 }}>
-          <span>{stats.bal} BNB</span>
+          <a href={walletUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#4a4539", transition: "opacity 0.2s" }}>
+            {stats.bal} BNB
+          </a>
           <span style={{ color: "#5a7a4a" }}>{stats.pnl}</span>
           <span>{stats.pos} open</span>
         </div>
@@ -199,8 +205,21 @@ export default function Home() {
       </div>
 
       {/* FOOTER */}
-      <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 20px 16px", fontFamily: "'IBM Plex Mono',monospace", fontSize: 7, letterSpacing: "0.3em", color: "#1a1815" }}>
-        BSC · FOUR.MEME · FLAP.SH
+      <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 20px 16px" }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: 20, fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.15em" }}>
+          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#2a2520", transition: "opacity 0.2s" }}>
+            GITHUB
+          </a>
+          <a href="/how-it-works" style={{ color: "#2a2520", transition: "opacity 0.2s" }}>
+            HOW IT WORKS
+          </a>
+          <a href={walletUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#2a2520", transition: "opacity 0.2s" }}>
+            BSCSCAN
+          </a>
+        </div>
+        <div style={{ marginTop: 8, fontFamily: "'IBM Plex Mono',monospace", fontSize: 7, letterSpacing: "0.3em", color: "#1a1815" }}>
+          BSC · FOUR.MEME · FLAP.SH
+        </div>
       </div>
     </div>
   );
