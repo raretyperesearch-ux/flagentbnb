@@ -1,20 +1,20 @@
 {
   "name": "flagent-bot",
   "version": "3.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx src/bot.ts",
-    "build": "tsc",
-    "start": "node dist/src/bot.js"
+    "build": "echo 'skip tsc, using tsx runtime'",
+    "start": "tsx src/bot.ts",
+    "dev": "tsx src/bot.ts"
   },
   "dependencies": {
     "viem": "^2.23.0",
-    "@supabase/supabase-js": "^2.45.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.5.0",
+    "@supabase/supabase-js": "^2.45.0",
     "tsx": "^4.19.0",
-    "@types/node": "^22.0.0"
+    "typescript": "^5.5.0"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }
