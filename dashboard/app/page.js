@@ -27,18 +27,15 @@ export default function Home() {
   var setTick = _tick[1];
   var videoRef = useRef(null);
 
-  // Force autoplay on all browsers
   useEffect(function() {
     var vid = videoRef.current;
     if (!vid) return;
-
     function tryPlay() {
       if (vid) {
         vid.muted = true;
         var p = vid.play();
         if (p && p.catch) {
           p.catch(function() {
-            // If autoplay still blocked, retry on first user interaction
             function playOnInteract() {
               if (vid) vid.play();
               document.removeEventListener("touchstart", playOnInteract);
@@ -52,17 +49,11 @@ export default function Home() {
         }
       }
     }
-
     vid.addEventListener("loadeddata", tryPlay);
-    // Also try immediately in case already loaded
     if (vid.readyState >= 2) tryPlay();
-
-    return function() {
-      if (vid) vid.removeEventListener("loadeddata", tryPlay);
-    };
+    return function() { if (vid) vid.removeEventListener("loadeddata", tryPlay); };
   }, []);
 
-  // Initial load
   useEffect(function() {
     fetch(SB + "/rest/v1/feed?order=created_at.desc&limit=15", { headers: HEADERS })
       .then(function(r) { return r.json(); })
@@ -93,7 +84,6 @@ export default function Home() {
       }).catch(function() {});
   }, []);
 
-  // Poll
   useEffect(function() {
     var poll = setInterval(function() {
       var since = new Date(Date.now() - 5000).toISOString();
@@ -128,13 +118,11 @@ export default function Home() {
     return function() { clearInterval(poll); };
   }, []);
 
-  // Render tick
   useEffect(function() {
     var t = setInterval(function() { setTick(function(n) { return n + 1; }); }, 80);
     return function() { clearInterval(t); };
   }, []);
 
-  // Expire
   useEffect(function() {
     setLines(function(p) { return p.filter(function(l) { return Date.now() - l.born < 20000; }); });
   });
@@ -162,7 +150,6 @@ export default function Home() {
         "a:hover{opacity:0.6}"
       }</style>
 
-      {/* VIDEO BACKGROUND */}
       <video
         ref={videoRef}
         autoPlay
@@ -184,21 +171,10 @@ export default function Home() {
         <source src={VIDEO_URL} type="video/mp4" />
       </video>
 
-      {/* GRADIENT OVERLAYS */}
-      <div style={{
-        position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none",
-        background: "linear-gradient(180deg, #050503ee 0%, #05050350 25%, #05050318 50%, #05050350 75%, #050503ee 100%)",
-      }}/>
-      <div style={{
-        position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none",
-        background: "radial-gradient(ellipse at 50% 45%, #c9a84c0a 0%, transparent 55%)",
-      }}/>
-      <div style={{
-        position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none",
-        background: "linear-gradient(90deg, #05050399 0%, transparent 30%, transparent 70%, #05050399 100%)",
-      }}/>
+      <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", background: "linear-gradient(180deg, #050503ee 0%, #05050350 25%, #05050318 50%, #05050350 75%, #050503ee 100%)" }}/>
+      <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", background: "radial-gradient(ellipse at 50% 45%, #c9a84c0a 0%, transparent 55%)" }}/>
+      <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", background: "linear-gradient(90deg, #05050399 0%, transparent 30%, transparent 70%, #05050399 100%)" }}/>
 
-      {/* HEADER */}
       <div style={{ position: "relative", zIndex: 2, padding: "24px 20px 0", textAlign: "center" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10 }}>
           <span style={{ fontFamily: "'Cinzel',serif", fontSize: 16, fontWeight: 700, letterSpacing: "0.22em", color: "#c9a84c", opacity: 0.7 }}>FLAGENT</span>
@@ -213,7 +189,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* COMMAND LINES */}
       <div style={{ flex: 1, position: "relative", zIndex: 2, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", padding: "0 16px 44px", maxWidth: 540, margin: "0 auto", width: "100%" }}>
         {lines.map(function(l) {
           var s = getStyle(l);
@@ -246,20 +221,19 @@ export default function Home() {
         })}
       </div>
 
-      {/* FOOTER */}
       <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 20px 16px" }}>
         <div style={{ display: "flex", justifyContent: "center", gap: 20, fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.15em" }}>
-          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#2a2520", transition: "opacity 0.2s" }}>
+          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#5a5347", transition: "opacity 0.2s" }}>
             GITHUB
           </a>
-          <a href="/how-it-works" style={{ color: "#2a2520", transition: "opacity 0.2s" }}>
+          <a href="/how-it-works" style={{ color: "#5a5347", transition: "opacity 0.2s" }}>
             HOW IT WORKS
           </a>
-          <a href={walletUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#2a2520", transition: "opacity 0.2s" }}>
+          <a href={walletUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#5a5347", transition: "opacity 0.2s" }}>
             BSCSCAN
           </a>
         </div>
-        <div style={{ marginTop: 8, fontFamily: "'IBM Plex Mono',monospace", fontSize: 7, letterSpacing: "0.3em", color: "#1a1815" }}>
+        <div style={{ marginTop: 8, fontFamily: "'IBM Plex Mono',monospace", fontSize: 7, letterSpacing: "0.3em", color: "#3a3530" }}>
           BSC · FOUR.MEME · FLAP.SH
         </div>
       </div>
