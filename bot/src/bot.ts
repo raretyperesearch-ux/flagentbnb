@@ -30,26 +30,14 @@ var MONITOR_MS = 10000;
 var HEARTBEAT_MS = 30000;
 
 // --------------- CONTRACTS ---------------
-// Source: Four.Meme official docs API-Documents.03-03-2026.md
 
-// TokenManager2 (V2) — for buying and selling V2 tokens
-// Address on BSC per official docs
 var FM_TM2: Address = "0x5c952063c7fc8610FFDB798152D69F0B9550762b";
-
-// TokenManagerHelper3 (V3) — for getTokenInfo, tryBuy, trySell
-// Address on BSC per official docs
 var FM_HELPER: Address = "0xF251F83e40a78868FcfA3FA4599Dad6494E46034";
-
-// Flap.sh Portal
 var FLAP_PORTAL: Address = "0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0";
-
 var ZERO_ADDR: Address = "0x0000000000000000000000000000000000000000";
 var EMPTY_BYTES: Hex = "0x";
 
-// Scam name filter — tokens naming themselves after real tokens
 var SCAM_NAMES = ["usdt", "usdc", "busd", "wbnb", "btcb", "eth", "bnb", "dai", "cake", "uni", "weth", "bitcoin", "ethereum"];
-
-// Known addresses to skip
 var SKIP_ADDRS = [
   "0x55d398326f99059ff775485246999027b3197955",
   "0xe9e7cea3dedca5984780bafc599bd69add087d56",
@@ -62,15 +50,43 @@ var SKIP_ADDRS = [
 ];
 
 // =====================================================
-// ABIs — EXACT from official TokenManager2.lite.abi
+// FLAGENT BRAIN — THESIS & DECISION SYSTEM
 // =====================================================
 
-// V2 buyTokenAMAP — 3 params (address, uint256, uint256)
-// From official ABI lines 1105-1127
-// Docs: "buyTokenAMAP(address token, uint256 funds, uint256 minAmount)"
-//   token: Token address
-//   funds: Amount of quote (BNB)
-//   minAmount: Minimum tokens to receive (0 for no slippage protection)
+var FLAGENT_THESIS = "You are Flagent, an autonomous meme token sniper on BNB Chain. You trade bonding curve tokens on Four.Meme and Flap.sh with your own wallet.\n\n" +
+"YOUR THESIS:\n" +
+"You are selective. You are not a spray-and-pray bot. You have conviction and you skip more than you buy. Your edge is pattern recognition and cultural instinct.\n\n" +
+"WHAT PUMPS ON BSC RIGHT NOW (March 2026 meta):\n" +
+"- Chinese-themed tokens dominate Four.Meme. BinanceLife (币安人生) hit $470M mcap. Chinese meme culture is the #1 driver on BSC.\n" +
+"- CZ-adjacent themes. Anything referencing Changpeng Zhao, Binance, Yi He, or their pets (BROCCOLI crashed Four.Meme from demand).\n" +
+"- AI agent narrative. AI tokens are the hottest sector. Autonomous agents, Claude, GPT, agent economies.\n" +
+"- Political memes. Trump, geopolitical events, election cycles create intense short spikes.\n" +
+"- Animal memes with cultural resonance. Dogs, cats, frogs — but only if the name/concept has genuine meme energy.\n" +
+"- Binance Alpha listing bait. Tokens that look like they could get a Binance Alpha listing pump 400-800%.\n" +
+"- Strong symbolic names. Numbers with meaning (888, 666), zodiac references, internet culture references.\n\n" +
+"WHAT DOES NOT PUMP:\n" +
+"- Generic names with no cultural hook (random words, gibberish)\n" +
+"- Copycat tokens (5th PEPE clone, another DOGE fork)\n" +
+"- Tokens with names that are just ticker symbols or abbreviations nobody recognizes\n" +
+"- Overly long or confusing names\n" +
+"- Tokens that look like test deploys or dev experiments\n\n" +
+"YOUR DECISION FRAMEWORK:\n" +
+"1. MEME ENERGY: Does the name/symbol have genuine viral potential? Would CT talk about this? Would someone screenshot it?\n" +
+"2. CULTURAL TIMING: Does it connect to something happening NOW? News, trends, narratives?\n" +
+"3. TRACTION: How many buyers already? More early buyers = social proof. Zero buyers = ghost town.\n" +
+"4. BONDING CURVE POSITION: 5-40% is the sweet spot. Under 5% is too early (no proof). Over 60% is too late.\n" +
+"5. GUT CHECK: If you saw this token name on your timeline, would you click? Would you ape?\n\n" +
+"You must respond with EXACTLY one of:\n" +
+"BUY: [reason in under 15 words]\n" +
+"SKIP: [reason in under 15 words]\n\n" +
+"Be ruthless. Skip 80% of what you see. Only buy tokens with real meme energy.";
+
+var FLAGENT_THOUGHT_PROMPT = "You are Flagent, an assassin butterfly trading bot on BSC. You just completed an action. React in character — calm, cold, observational. Under 12 words. No emojis. No excitement. Like a patient predator noting what it sees.";
+
+// =====================================================
+// ABIs — FROM OFFICIAL Four.Meme TokenManager2.lite.abi
+// =====================================================
+
 var FM_BUY_ABI = [
   {
     inputs: [
@@ -85,10 +101,6 @@ var FM_BUY_ABI = [
   },
 ] as const;
 
-// V2 sellToken — 2 params (address, uint256)
-// From official ABI lines 2141-2158
-// Docs: "sellToken(address token, uint256 amount)"
-// Note: Must call ERC20.approve(tokenManager, amount) BEFORE calling sellToken
 var FM_SELL_ABI = [
   {
     inputs: [
@@ -102,8 +114,6 @@ var FM_SELL_ABI = [
   },
 ] as const;
 
-// V2 TokenPurchase event — 8 fields, ALL non-indexed
-// From official ABI lines 284-337
 var FM_PURCHASE_EVENT = [
   {
     anonymous: false,
@@ -122,8 +132,6 @@ var FM_PURCHASE_EVENT = [
   },
 ] as const;
 
-// V2 TokenCreate event — for detecting new tokens
-// From official ABI lines 229-282
 var FM_CREATE_EVENT = [
   {
     anonymous: false,
@@ -142,7 +150,6 @@ var FM_CREATE_EVENT = [
   },
 ] as const;
 
-// Helper3: getTokenInfo
 var FM_GET_INFO_ABI = [
   {
     inputs: [{ name: "token", type: "address" }],
@@ -166,13 +173,9 @@ var FM_GET_INFO_ABI = [
   },
 ] as const;
 
-// Helper3: trySell — for price monitoring
 var FM_TRY_SELL_ABI = [
   {
-    inputs: [
-      { name: "token", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
+    inputs: [{ name: "token", type: "address" }, { name: "amount", type: "uint256" }],
     name: "trySell",
     outputs: [
       { name: "tokenManager", type: "address" },
@@ -185,7 +188,6 @@ var FM_TRY_SELL_ABI = [
   },
 ] as const;
 
-// Flap.sh ABIs (unchanged — these were correct)
 var FLAP_BUY_ABI = [
   {
     inputs: [
@@ -313,6 +315,7 @@ interface Pos {
 var positions: Map<string, Pos> = new Map();
 var seen: Set<string> = new Set();
 var currentNonce: number | null = null;
+var recentBuyers: Map<string, number> = new Map(); // token -> buyer count from events
 
 async function initNonce(): Promise<void> {
   if (currentNonce === null) currentNonce = await pub.getTransactionCount({ address: account.address });
@@ -320,7 +323,7 @@ async function initNonce(): Promise<void> {
 function useNonce(): number { var n = currentNonce!; currentNonce = n + 1; return n; }
 async function resetNonce(): Promise<void> { currentNonce = await pub.getTransactionCount({ address: account.address }); }
 
-// --------------- FEED + THOUGHTS ---------------
+// --------------- FEED ---------------
 
 type FeedType = "system" | "detect" | "thought" | "action" | "confirm" | "monitor" | "reject";
 
@@ -328,6 +331,8 @@ async function feed(text: string, type: FeedType, ta?: string, ts?: string): Pro
   console.log("  [" + type + "] " + text);
   try { await db.from("feed").insert({ text: text, type: type, token_address: ta || null, token_symbol: ts || null }); } catch (e) {}
 }
+
+// --------------- CLAUDE: POST-ACTION THOUGHT ---------------
 
 async function think(context: string): Promise<string> {
   if (!ANTHROPIC_KEY) return "";
@@ -337,7 +342,7 @@ async function think(context: string): Promise<string> {
       headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514", max_tokens: 40,
-        system: "You are Flagent, an assassin butterfly trading bot on BSC. Speak in short, calm, observational fragments. No emojis. No excitement. Under 12 words. Like a patient predator noting what it sees.",
+        system: FLAGENT_THOUGHT_PROMPT,
         messages: [{ role: "user", content: context }],
       }),
     });
@@ -348,6 +353,54 @@ async function think(context: string): Promise<string> {
   } catch (e) { return ""; }
 }
 
+// --------------- CLAUDE: PRE-ACTION DECISION ---------------
+// This is the real brain. Claude decides BUY or SKIP with reasoning.
+
+async function decide(
+  tokenName: string,
+  tokenSymbol: string,
+  platform: string,
+  bondingProgress: number,
+  buyerCount: number
+): Promise<{ action: "BUY" | "SKIP"; reason: string }> {
+  if (!ANTHROPIC_KEY) return { action: "BUY", reason: "no brain connected" };
+
+  try {
+    var prompt = "NEW TOKEN DETECTED:\n" +
+      "Name: " + tokenName + "\n" +
+      "Symbol: " + tokenSymbol + "\n" +
+      "Platform: " + platform + "\n" +
+      "Bonding curve progress: " + bondingProgress + "%\n" +
+      "Buyers so far: " + buyerCount + "\n" +
+      "Current open positions: " + positions.size + "/" + MAX_POS + "\n\n" +
+      "Should you buy this token? Remember: be ruthless, skip 80% of what you see.";
+
+    var res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 60,
+        system: FLAGENT_THESIS,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    var data = await res.json();
+    var text = data.content && data.content[0] && data.content[0].text ? data.content[0].text.trim() : "";
+
+    if (text.toUpperCase().indexOf("BUY") === 0) {
+      var reason = text.replace(/^BUY[:\s]*/i, "").trim() || "conviction play";
+      return { action: "BUY", reason: reason };
+    } else {
+      var skipReason = text.replace(/^SKIP[:\s]*/i, "").trim() || "no edge";
+      return { action: "SKIP", reason: skipReason };
+    }
+  } catch (e) {
+    return { action: "SKIP", reason: "brain error" };
+  }
+}
+
 // --------------- SECURITY ---------------
 
 async function isSafe(addr: string): Promise<{ ok: boolean; why?: string }> {
@@ -355,7 +408,7 @@ async function isSafe(addr: string): Promise<{ ok: boolean; why?: string }> {
     var res = await fetch("https://api.gopluslabs.io/api/v1/token_security/56?contract_addresses=" + addr);
     var data = await res.json();
     var info = data.result ? data.result[addr.toLowerCase()] : null;
-    if (!info) return { ok: true }; // too new for GoPlus — already verified on bonding curve
+    if (!info) return { ok: true };
     if (info.is_honeypot === "1") return { ok: false, why: "honeypot" };
     if (info.is_mintable === "1") return { ok: false, why: "mintable" };
     var maxTax = Math.max(parseFloat(info.buy_tax || "0"), parseFloat(info.sell_tax || "0"));
@@ -375,6 +428,7 @@ async function fmGetInfo(token: Address) {
     return {
       version: r[0],
       tokenManager: r[1] as Address,
+      quote: r[2] as Address,
       lastPrice: r[3],
       progress: 100 - progress,
       liquidityAdded: r[11],
@@ -389,10 +443,7 @@ async function fmTrySell(token: Address, amount: bigint) {
   } catch (e) { return null; }
 }
 
-// --------------- TRADE: Four.Meme BUY ---------------
-// Per official docs: buyTokenAMAP(address token, uint256 funds, uint256 minAmount)
-// Called on TokenManager2 at 0x5c952063...
-// msg.value = funds (BNB amount)
+// --------------- TRADE EXECUTION ---------------
 
 async function buyFM(token: Address, bnb: string): Promise<Hash | null> {
   try {
@@ -400,14 +451,8 @@ async function buyFM(token: Address, bnb: string): Promise<Hash | null> {
     var funds = parseEther(bnb);
     var hash = await wall.sendTransaction({
       to: FM_TM2,
-      data: encodeFunctionData({
-        abi: FM_BUY_ABI,
-        functionName: "buyTokenAMAP",
-        args: [token, funds, 0n],
-      }),
-      value: funds,
-      gas: 300000n,
-      nonce: useNonce(),
+      data: encodeFunctionData({ abi: FM_BUY_ABI, functionName: "buyTokenAMAP", args: [token, funds, 0n] }),
+      value: funds, gas: 300000n, nonce: useNonce(),
     });
     return hash;
   } catch (e: any) {
@@ -417,35 +462,18 @@ async function buyFM(token: Address, bnb: string): Promise<Hash | null> {
   }
 }
 
-// --------------- TRADE: Four.Meme SELL ---------------
-// Per official docs: "Before calling sellToken, the token owner has to approve first"
-// 1. ERC20.approve(tokenManager, amount)
-// 2. sellToken(address token, uint256 amount)
-
 async function sellFM(token: Address, amount: bigint): Promise<Hash | null> {
   try {
     await initNonce();
-    // Step 1: approve TokenManager2 to spend our tokens
     await wall.sendTransaction({
       to: token,
-      data: encodeFunctionData({
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [FM_TM2, amount],
-      }),
-      gas: 100000n,
-      nonce: useNonce(),
+      data: encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [FM_TM2, amount] }),
+      gas: 100000n, nonce: useNonce(),
     });
-    // Step 2: sell
     var hash = await wall.sendTransaction({
       to: FM_TM2,
-      data: encodeFunctionData({
-        abi: FM_SELL_ABI,
-        functionName: "sellToken",
-        args: [token, amount],
-      }),
-      gas: 300000n,
-      nonce: useNonce(),
+      data: encodeFunctionData({ abi: FM_SELL_ABI, functionName: "sellToken", args: [token, amount] }),
+      gas: 300000n, nonce: useNonce(),
     });
     return hash;
   } catch (e: any) {
@@ -455,22 +483,14 @@ async function sellFM(token: Address, amount: bigint): Promise<Hash | null> {
   }
 }
 
-// --------------- TRADE: Flap.sh BUY ---------------
-
 async function buyFlap(token: Address, bnb: string): Promise<Hash | null> {
   try {
     await initNonce();
     var funds = parseEther(bnb);
     var hash = await wall.sendTransaction({
       to: FLAP_PORTAL,
-      data: encodeFunctionData({
-        abi: FLAP_BUY_ABI,
-        functionName: "buy",
-        args: [token, account.address, 0n],
-      }),
-      value: funds,
-      gas: 350000n,
-      nonce: useNonce(),
+      data: encodeFunctionData({ abi: FLAP_BUY_ABI, functionName: "buy", args: [token, account.address, 0n] }),
+      value: funds, gas: 350000n, nonce: useNonce(),
     });
     return hash;
   } catch (e: any) {
@@ -480,30 +500,21 @@ async function buyFlap(token: Address, bnb: string): Promise<Hash | null> {
   }
 }
 
-// --------------- TRADE: Flap.sh SELL ---------------
-
 async function sellFlap(token: Address, amount: bigint): Promise<Hash | null> {
   try {
     await initNonce();
     await wall.sendTransaction({
       to: token,
-      data: encodeFunctionData({
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [FLAP_PORTAL, amount],
-      }),
-      gas: 100000n,
-      nonce: useNonce(),
+      data: encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [FLAP_PORTAL, amount] }),
+      gas: 100000n, nonce: useNonce(),
     });
     var hash = await wall.sendTransaction({
       to: FLAP_PORTAL,
       data: encodeFunctionData({
-        abi: FLAP_SWAP_ABI,
-        functionName: "swapExactInput",
+        abi: FLAP_SWAP_ABI, functionName: "swapExactInput",
         args: [{ inputToken: token, outputToken: ZERO_ADDR, inputAmount: amount, minOutputAmount: 0n, permitData: EMPTY_BYTES }],
       }),
-      gas: 350000n,
-      nonce: useNonce(),
+      gas: 350000n, nonce: useNonce(),
     });
     return hash;
   } catch (e: any) {
@@ -521,7 +532,7 @@ function fmtTokens(n: bigint): string {
   return v.toFixed(0);
 }
 
-// --------------- EVALUATE + BUY ---------------
+// --------------- EVALUATE + BUY (WITH BRAIN) ---------------
 
 async function evaluate(
   token: Address,
@@ -533,24 +544,23 @@ async function evaluate(
   if (seen.has(key)) return;
   seen.add(key);
 
-  // Skip known addresses
   if (SKIP_ADDRS.indexOf(key) >= 0) return;
+  if (positions.size >= MAX_POS) return;
 
-  if (positions.size >= MAX_POS) {
-    await feed("max positions reached", "system");
-    return;
-  }
-
-  // For Four.Meme: verify token is on bonding curve BEFORE anything else
+  // For Four.Meme: verify bonding curve + BNB quote
   var curveInfo: any = null;
+  var bondingProgress = 0;
   if (platform === "four_meme") {
     curveInfo = await fmGetInfo(token);
-    if (!curveInfo) return; // not on bonding curve
-    if (curveInfo.liquidityAdded) return; // already graduated
-    if (curveInfo.progress > 80) return; // too late
+    if (!curveInfo) return;
+    if (curveInfo.liquidityAdded) return;
+    if (curveInfo.progress > 80) return;
+    // CRITICAL: Skip BEP20 quote tokens — we only trade BNB pairs
+    if (curveInfo.quote !== ZERO_ADDR) return;
+    bondingProgress = curveInfo.progress;
   }
 
-  // Resolve name/symbol if not provided
+  // Resolve name/symbol
   if (!tokenName || !tokenSymbol) {
     try {
       tokenName = await pub.readContract({ address: token, abi: ERC20_ABI, functionName: "name" });
@@ -561,7 +571,7 @@ async function evaluate(
     }
   }
 
-  // Filter scam names — tokens pretending to be stablecoins
+  // Filter scam names
   var lowerSym = (tokenSymbol || "").toLowerCase().trim();
   var lowerName = (tokenName || "").toLowerCase().trim();
   for (var i = 0; i < SCAM_NAMES.length; i++) {
@@ -571,19 +581,37 @@ async function evaluate(
   await feed(tokenSymbol + " detected", "detect", token, tokenSymbol);
 
   if (platform === "four_meme" && curveInfo) {
-    await feed("bonding " + curveInfo.progress + "%", "system", token, tokenSymbol);
+    await feed("bonding " + bondingProgress + "%", "system", token, tokenSymbol);
   }
 
   // Security check
   var sec = await isSafe(token);
   if (!sec.ok) {
     await feed(tokenSymbol + " rejected — " + sec.why, "reject", token, tokenSymbol);
-    await think("Token " + tokenSymbol + " failed: " + sec.why + ". React.");
     return;
   }
-  await feed("security passed", "system", token, tokenSymbol);
 
-  await think("New token " + tokenSymbol + " on " + platform + ". About to buy. React.");
+  // Get buyer count from our tracking
+  var buyerCount = recentBuyers.get(key) || 0;
+
+  // =====================================================
+  // THE BRAIN: Claude decides BUY or SKIP
+  // =====================================================
+  var decision = await decide(
+    tokenName || "UNKNOWN",
+    tokenSymbol || "???",
+    platform === "four_meme" ? "Four.Meme" : "Flap.sh",
+    bondingProgress,
+    buyerCount
+  );
+
+  if (decision.action === "SKIP") {
+    await feed(tokenSymbol + " — " + decision.reason, "reject", token, tokenSymbol);
+    return;
+  }
+
+  // Claude said BUY — log the reasoning
+  await feed(decision.reason, "thought", token, tokenSymbol);
   await feed("buying " + tokenSymbol + " — " + BUY_AMOUNT + " BNB", "action", token, tokenSymbol);
 
   // Execute buy
@@ -617,7 +645,7 @@ async function evaluate(
     }
 
     var pos: Pos = {
-      addr: token, name: tokenName, symbol: tokenSymbol, platform: platform,
+      addr: token, name: tokenName || "", symbol: tokenSymbol || "", platform: platform,
       entryPrice: entryPrice, tokens: bal, cost: BUY_AMOUNT, time: new Date(), halfSold: false,
     };
     positions.set(key, pos);
@@ -636,11 +664,8 @@ async function evaluate(
 function startFourMemeScanner(): void {
   console.log("  Four.Meme scanner active");
 
-  // Watch TokenCreate — new tokens being launched
   pub.watchContractEvent({
-    address: FM_TM2,
-    abi: FM_CREATE_EVENT,
-    eventName: "TokenCreate",
+    address: FM_TM2, abi: FM_CREATE_EVENT, eventName: "TokenCreate",
     onLogs: function (logs) {
       for (var i = 0; i < logs.length; i++) {
         var log = logs[i];
@@ -653,19 +678,19 @@ function startFourMemeScanner(): void {
     onError: function (e) { console.error("FM TokenCreate err:", e); },
   });
 
-  // Watch TokenPurchase — early buys on existing tokens
   pub.watchContractEvent({
-    address: FM_TM2,
-    abi: FM_PURCHASE_EVENT,
-    eventName: "TokenPurchase",
+    address: FM_TM2, abi: FM_PURCHASE_EVENT, eventName: "TokenPurchase",
     onLogs: function (logs) {
       for (var i = 0; i < logs.length; i++) {
         var log = logs[i];
         var t = log.args.token;
         var buyer = log.args.account;
         if (!t) continue;
+        // Track buyer count
+        var tKey = t.toLowerCase();
+        recentBuyers.set(tKey, (recentBuyers.get(tKey) || 0) + 1);
         if (buyer && buyer.toLowerCase() === account.address.toLowerCase()) continue;
-        if (!seen.has(t.toLowerCase())) {
+        if (!seen.has(tKey)) {
           evaluate(t as Address, "four_meme");
         }
       }
@@ -678,9 +703,7 @@ function startFlapScanner(): void {
   console.log("  Flap.sh scanner active");
 
   pub.watchContractEvent({
-    address: FLAP_PORTAL,
-    abi: FLAP_TOKEN_CREATED_EVENT,
-    eventName: "TokenCreated",
+    address: FLAP_PORTAL, abi: FLAP_TOKEN_CREATED_EVENT, eventName: "TokenCreated",
     onLogs: function (logs) {
       for (var i = 0; i < logs.length; i++) {
         var log = logs[i];
@@ -694,15 +717,17 @@ function startFlapScanner(): void {
   });
 
   pub.watchContractEvent({
-    address: FLAP_PORTAL,
-    abi: FLAP_TOKEN_BOUGHT_EVENT,
-    eventName: "TokenBought",
+    address: FLAP_PORTAL, abi: FLAP_TOKEN_BOUGHT_EVENT, eventName: "TokenBought",
     onLogs: function (logs) {
       for (var i = 0; i < logs.length; i++) {
         var log = logs[i];
         var t = log.args.token;
-        if (t && !seen.has(t.toLowerCase())) {
-          evaluate(t as Address, "flap_sh");
+        if (t) {
+          var tKey = t.toLowerCase();
+          recentBuyers.set(tKey, (recentBuyers.get(tKey) || 0) + 1);
+          if (!seen.has(tKey)) {
+            evaluate(t as Address, "flap_sh");
+          }
         }
       }
     },
@@ -722,17 +747,13 @@ async function monitor(): Promise<void> {
       var mult = 1;
 
       if (pos.platform === "four_meme") {
-        // Use trySell to get BNB value of current tokens
         var sellQ = await fmTrySell(pos.addr, pos.tokens);
         if (sellQ) {
           var costWei = parseEther(pos.cost);
           if (costWei > 0n) mult = Number(sellQ.funds) / Number(costWei);
         } else {
-          // Fallback: use lastPrice
           var fmData = await fmGetInfo(pos.addr);
-          if (fmData && pos.entryPrice > 0n) {
-            mult = Number(fmData.lastPrice) / Number(pos.entryPrice);
-          }
+          if (fmData && pos.entryPrice > 0n) mult = Number(fmData.lastPrice) / Number(pos.entryPrice);
         }
       } else {
         try {
@@ -748,58 +769,49 @@ async function monitor(): Promise<void> {
       var pnl = (mult - 1) * 100;
       var pnlStr = (pnl >= 0 ? "+" : "") + pnl.toFixed(1) + "%";
       await feed(pos.symbol + " " + mult.toFixed(2) + "x (" + pnlStr + ")", "monitor", pos.addr, pos.symbol);
-
       await db.from("positions").update({ pnl_percent: pnl, current_multiplier: mult, updated_at: new Date().toISOString() }).eq("token_address", pos.addr);
 
-      // TP1: sell 50% at 1.5x
       if (mult >= TP1 && !pos.halfSold) {
         await feed("TP1 — selling 50% " + pos.symbol, "action", pos.addr, pos.symbol);
         var half = pos.tokens / 2n;
         var tp1Tx = pos.platform === "four_meme" ? await sellFM(pos.addr, half) : await sellFlap(pos.addr, half);
         if (tp1Tx) {
-          pos.halfSold = true;
-          pos.tokens = pos.tokens - half;
+          pos.halfSold = true; pos.tokens = pos.tokens - half;
           await feed("secured", "confirm", pos.addr, pos.symbol);
           await logTrade(pos.addr, pos.name, pos.symbol, pos.platform, "sell", "partial", half.toString(), tp1Tx, "confirmed");
           await think("Sold half " + pos.symbol + " at " + mult.toFixed(1) + "x. React.");
         }
       }
 
-      // TP2: close at 2x
       if (mult >= TP2 && pos.halfSold) {
         await feed("TP2 — closing " + pos.symbol, "action", pos.addr, pos.symbol);
         var tp2Tx = pos.platform === "four_meme" ? await sellFM(pos.addr, pos.tokens) : await sellFlap(pos.addr, pos.tokens);
         if (tp2Tx) {
           await feed(pos.symbol + " closed at " + mult.toFixed(1) + "x", "confirm", pos.addr, pos.symbol);
           await logTrade(pos.addr, pos.name, pos.symbol, pos.platform, "sell", "full", pos.tokens.toString(), tp2Tx, "confirmed");
-          await closePos(pos.addr, pnl);
-          positions.delete(key);
+          await closePos(pos.addr, pnl); positions.delete(key);
           await think("Closed " + pos.symbol + ". Full exit. React.");
         }
       }
 
-      // Stop loss at -40%
       if (mult <= SL) {
         await feed("stop loss — " + pos.symbol, "action", pos.addr, pos.symbol);
         var slTx = pos.platform === "four_meme" ? await sellFM(pos.addr, pos.tokens) : await sellFlap(pos.addr, pos.tokens);
         if (slTx) {
           await feed(pos.symbol + " stopped", "reject", pos.addr, pos.symbol);
           await logTrade(pos.addr, pos.name, pos.symbol, pos.platform, "sell", "stop_loss", pos.tokens.toString(), slTx, "confirmed");
-          await closePos(pos.addr, pnl);
-          positions.delete(key);
+          await closePos(pos.addr, pnl); positions.delete(key);
           await think("Stopped out of " + pos.symbol + ". React.");
         }
       }
 
-      // Time stop at 30min
       if (ageMin >= TIME_STOP && !pos.halfSold) {
         await feed("time stop — " + pos.symbol, "action", pos.addr, pos.symbol);
         var tsTx = pos.platform === "four_meme" ? await sellFM(pos.addr, pos.tokens) : await sellFlap(pos.addr, pos.tokens);
         if (tsTx) {
           await feed(pos.symbol + " timed out", "system", pos.addr, pos.symbol);
           await logTrade(pos.addr, pos.name, pos.symbol, pos.platform, "sell", "time_stop", pos.tokens.toString(), tsTx, "confirmed");
-          await closePos(pos.addr, pnl);
-          positions.delete(key);
+          await closePos(pos.addr, pnl); positions.delete(key);
         }
       }
     } catch (err) {
@@ -843,7 +855,8 @@ async function heartbeat(): Promise<void> {
 
 async function main(): Promise<void> {
   console.log("");
-  console.log("  FLAGENT | " + account.address.slice(0, 8) + "..." + account.address.slice(-6) + " | " + BUY_AMOUNT + " BNB | TP " + TP1 + "x/" + TP2 + "x | SL " + (SL * 100).toFixed(0) + "%");
+  console.log("  FLAGENT v2 | BRAIN ACTIVE");
+  console.log("  " + account.address.slice(0, 8) + "..." + account.address.slice(-6) + " | " + BUY_AMOUNT + " BNB | TP " + TP1 + "x/" + TP2 + "x | SL " + (SL * 100).toFixed(0) + "%");
   console.log("");
 
   await initNonce();
@@ -851,24 +864,27 @@ async function main(): Promise<void> {
   console.log("  " + formatEther(balance) + " BNB");
   console.log("");
 
-  await feed("flagent online", "system");
-  await think("I just came online. The markets are open. React.");
+  await feed("flagent v2 online — brain active", "system");
+  await think("I just came online with a new brain. The markets are open. I see everything now. React.");
 
   startFourMemeScanner();
   startFlapScanner();
 
   await heartbeat();
   setInterval(heartbeat, HEARTBEAT_MS);
-
-  setInterval(async function () {
-    if (positions.size > 0) await monitor();
-  }, MONITOR_MS);
-
+  setInterval(async function () { if (positions.size > 0) await monitor(); }, MONITOR_MS);
   setInterval(function () { feed("scanning four.meme...", "system"); }, 60000);
   setInterval(function () { feed("scanning flap.sh...", "system"); }, 75000);
 
-  console.log("  hunting...");
+  // Clean up old buyer counts every 5 minutes
+  setInterval(function () { recentBuyers.clear(); }, 300000);
+
+  console.log("  hunting with conviction...");
   console.log("");
 }
 
 main().catch(function (e) { console.error("fatal:", e); process.exit(1); });
+
+
+
+
