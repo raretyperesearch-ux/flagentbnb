@@ -56,7 +56,7 @@ export default function Home() {
   }, []);
 
   useEffect(function() {
-    fetch(SB + "/rest/v1/feed?order=created_at.desc&limit=15", { headers: HEADERS })
+    fetch(SB + "/rest/v1/feed?order=created_at.desc&limit=14", { headers: HEADERS })
       .then(function(r) { return r.json(); })
       .then(function(d) {
         if (Array.isArray(d) && d.length > 0) {
@@ -98,7 +98,9 @@ export default function Home() {
               var fresh = d.filter(function(x) { return !ids.has(x.id); }).map(function(x) {
                 return { id: x.id, text: x.text, type: x.type, born: Date.now() };
               });
-              return fresh.length ? p.concat(fresh).slice(-14) : p;
+              if (fresh.length === 0) return p;
+              // Keep last 14 lines — old ones stay, new ones push them up
+              return p.concat(fresh).slice(-14);
             });
           }
         }).catch(function() {});
@@ -124,18 +126,23 @@ export default function Home() {
     return function() { clearInterval(t); };
   }, []);
 
-  useEffect(function() {
-    setLines(function(p) { return p.filter(function(l) { return Date.now() - l.born < 20000; }); });
-  });
+  // NO expire effect — lines stay on screen until new ones push them out
 
   function getStyle(line) {
     var age = Date.now() - line.born;
     var len = line.text.length;
     var tt = Math.min(len * 20, 800);
+    // Typewriter phase
     if (age < tt) return { o: Math.min(age / 150, 1), c: Math.floor((age / tt) * len) };
+    // Full brightness for 14 seconds
     if (age < 14000) return { o: 1, c: len };
-    if (age < 20000) return { o: 1 - (age - 14000) / 6000, c: len };
-    return { o: 0, c: len };
+    // Fade to dim (not invisible) over 6 seconds — settles at 0.25
+    if (age < 20000) {
+      var fade = 1 - (age - 14000) / 6000;
+      return { o: Math.max(fade, 0.25), c: len };
+    }
+    // Stay dimmed — never disappear
+    return { o: 0.25, c: len };
   }
 
   var walletUrl = stats.wallet
