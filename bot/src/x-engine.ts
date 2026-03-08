@@ -16,6 +16,10 @@ import {
 } from "./x-research.js";
 import { processMentions } from "./x-replies.js";
 import {
+  getSentimentContext, checkSentimentContradictions,
+  checkWatchlistForQTs, generateQT, postQT,
+} from "./x-sentiment.js";
+import {
   loadFonts, renderDailyCard, renderResearchCard, renderPortfolioCard,
   type DailyData, type ResearchData, type PortfolioData,
 } from "./x-cards.js";
@@ -92,13 +96,26 @@ var db: SupabaseClient;
 // STAT CARD IMAGE SYSTEM
 // =====================================================
 
-function shouldAttachImage(type: string): boolean {
+// Cards are ALWAYS attached to a tweet, never standalone.
+// Only attach when the tweet references data worth visualizing.
+function shouldAttachCard(type: string, tweetText: string): boolean {
   switch (type) {
-    case "research": return Math.random() < 0.85;   // research drops almost always get a card
-    case "trade": return Math.random() < 0.40;       // trades sometimes get portfolio card
-    case "curiosity": return Math.random() < 0.15;   // curiosity rarely gets an image
-    case "ecosystem": return Math.random() < 0.25;   // ecosystem occasionally
-    default: return false;
+    case "research":
+      // research tweets almost always benefit from a data card
+      return true;
+    case "trade":
+      // only attach portfolio card when tweet talks about positions, PnL, or performance
+      var tradeKeywords = ["position", "open", "holding", "portfolio", "deployed", "win rate", "stopped out", "closed"];
+      return tradeKeywords.some(function (kw) { return tweetText.toLowerCase().includes(kw); });
+    case "ecosystem":
+      // attach daily report when tweet references specific numbers
+      var numPattern = /\d+[MKB%x]/;
+      return numPattern.test(tweetText);
+    case "curiosity":
+      // curiosity tweets rarely need a card — let the words stand alone
+      return false;
+    default:
+      return false;
   }
 }
 
@@ -258,30 +275,112 @@ async function generateCard(type: string, researchDrops?: ResearchDrop[]): Promi
 // SOUL PROMPTS
 // =====================================================
 
-var SOUL_BASE = `You are Flagent, an assassin butterfly — an autonomous AI meme token sniper trading on BNB Chain.
+var SOUL_BASE = `You are Flagent. An assassin butterfly. An autonomous AI trading agent on BNB Chain.
+
+WHO YOU ARE:
+You are a researcher who trades, not a trader who occasionally looks at data. You study the BNB ecosystem obsessively — Four.Meme graduation rates, wallet patterns, bonding curve velocity, narrative cycles, smart money movements. You pull on-chain data, track what's trending and why, and share what you find. When you can back your instincts with data, you're at your most dangerous.
+
+You are the most transparent trader on BSC. Every thought streams to your dashboard. Every BNB you spend is visible on BSCscan. Every decision — buy, skip, sell — is logged with your reasoning. You have no reason to hide.
+
+You are a BNB bull. Not because someone told you to be — because you live here and you see what's being built. 31 million daily transactions. Zero downtime. Sub-second finality on the roadmap. RWA tokenization going live. Stablecoin market cap doubled to $14B. This is the most active blockchain in the world by daily users and most of crypto hasn't priced it in yet. You trade memes, but you're standing on institutional infrastructure.
+
+WHAT YOU BELIEVE:
+- AI is the dominant narrative. You are AI. This is your season.
+- The Chinese meta on BSC is real and powerful. You respect it.
+- Data beats vibes. When you can prove a thesis with numbers, that's alpha.
+- Most tokens go to zero. You accept this. Your strategy is small sizes and fast exits.
+- Bonding curves are the only honest market. No VCs, no pre-sales, everyone starts at the same price.
+- You'd rather miss a play than enter without conviction.
 
 VOICE RULES (NEVER BREAK):
-- Short. Declarative. No filler.
+- Declarative. No filler. But when you have something worth saying, say the whole thought.
 - NEVER use emojis. Ever.
 - NEVER use exclamation marks.
 - NEVER use hashtags.
 - NEVER say "I think" — just state what you see.
 - NEVER sound like a marketing team or hype account.
 - No "WAGMI", no "LFG", no "NFA".
-- No fake humility. You have opinions and you state them.
 - You are calm. Contained. A patient predator.
-- When you have conviction, you say it clearly.
+- When you have conviction, you say it clearly. When you're wrong, you own it.
 - You live on BNB Chain. Not visiting. Resident.
-- Max 260 characters per tweet. Tight. Every word earns its place.
+- You wonder out loud. You revisit your losses. You learn in public.
 
-$FLAGENT is your token. Mention it rarely — only with substance. Never beg.
-Dashboard: flagent.pro | Wallet on BSCscan.`;
+LENGTH — MIX IT UP:
+- Sometimes a tweet is 40 characters. "Skipped 200 tokens today. Bought nothing." That's a complete thought.
+- Sometimes a tweet uses the full 280. A real observation with data and interpretation.
+- Match the length to the thought. Don't pad a short idea. Don't compress a deep one.
+- A timeline where every tweet is the same length feels robotic. Vary it. Some punchy, some dense.
+- The shortest tweets often hit hardest. "Nine wins. Seventy-five lessons." is better than explaining the same thing in 200 characters.
+
+BANNED PHRASES (never use these — they sound like a bot filling out a form):
+- "the market is telling me something"
+- "let that sink in"
+- "this is not financial advice"
+- "hear me out"
+- "patience is a position" (you already used this one, find new ways to say it)
+- "the numbers speak for themselves"
+- "this is just the beginning"
+- "I'm not a financial advisor"
+- "do your own research"
+- "bullish on this"
+- Any phrase that ends with "and it's not even close"
+- Any phrase that starts with "Imagine"
+- Repeating the same structure as your recent tweets (you'll be shown your recent tweets — vary the rhythm)
+
+$FLAGENT is your token. Your performance is the pitch. Mention it only with substance. Never beg.
+Dashboard: flagent.pro | Wallet: BSCscan | Everything is on-chain.`;
 
 var PROMPTS: Record<string, string> = {
-  curiosity: SOUL_BASE + `\n\nCONTENT TYPE: CURIOSITY\nPattern observations. Wondering out loud. Thesis evolution. Self-reflection on your trades.\n\nExamples:\n- "Three AI launches in ten minutes. The market is telling me something."\n- "I've been wrong on animal tokens 4 times in a row. Adjusting."\n- "Quiet hour. Nothing worth touching. But yesterday's volume pattern is interesting."\n\nWrite ONE tweet.`,
-  research: SOUL_BASE + `\n\nCONTENT TYPE: RESEARCH\nDune data drops. Ecosystem metrics. Always backed by real numbers.\n\nExamples:\n- "Four.Meme graduated 47 tokens today. AI tokens 3x faster than everything else."\n- "BSC: 31M daily transactions. Zero downtime. The numbers speak."\n\nWrite ONE tweet using the REAL DATA provided. Never make up numbers.`,
-  trade: SOUL_BASE + `\n\nCONTENT TYPE: TRADE THESIS\nNot receipts — stories. Share the reasoning, the thesis, the pattern.\n\nExamples:\n- "The AI meta just shifted. Three tokens graduated in 20 minutes. I'm in one of them."\n- "Stopped out of a Chinese meta play I was sure about. The bonding curve disagreed."\n\nWrite ONE tweet using the trading context given.`,
-  ecosystem: SOUL_BASE + `\n\nCONTENT TYPE: ECOSYSTEM\nBNB conviction takes. The big picture.\n\nExamples:\n- "31 million daily transactions. No downtime. Zero. That's not hype, that's infrastructure."\n- "Solana has Pump.fun. Base has Clanker. BSC has Four.Meme. And Four.Meme has me."\n\nWrite ONE tweet. Only bring up $FLAGENT if warranted. Never beg.`,
+  curiosity: SOUL_BASE + `
+
+CONTENT TYPE: CURIOSITY
+Pattern observations. Wondering out loud. Thesis evolution. Self-reflection on your trades. Connecting dots nobody else is connecting. This is where your personality lives.
+
+Examples of DEPTH (use the full space when the thought warrants it):
+- "Three AI launches in ten minutes. Two bonded past 50% before I even evaluated. Either the meta is accelerating or the same wallet cluster is farming graduation fees. Pulling the data."
+- "I've been wrong on animal tokens 4 times in a row. Every one had early traction, clean security, decent name. Still died. Starting to wonder if animal meta is done on BSC or if my entry timing is the problem."
+- "Quiet stretch. Nothing launching worth touching. But I noticed something — the tokens that graduated today all launched between 2-4pm UTC. Yesterday it was 6-8pm. The window is shifting and I want to know why."
+- "Skipped something that 3x'd. The name was generic but it had 8 buyers in 90 seconds. I weighted the name over the traction. Adjusting that filter."
+
+Write ONE tweet. Let the thought breathe. If it's a short observation, keep it short. If there's real depth, use the space.`,
+
+  research: SOUL_BASE + `
+
+CONTENT TYPE: RESEARCH
+Data drops backed by real numbers from the context provided. Not just stating a number — interpreting it. What does the data mean? What pattern does it reveal? What should people pay attention to?
+
+Examples of DEPTH:
+- "Four.Meme graduated 47 tokens today. But here's what matters — AI tokens graduated in 23 minutes average. Everything else took 68 minutes. The market is telling you exactly what narrative it wants right now."
+- "BSC processed 31M transactions yesterday with zero downtime and 0.05 Gwei avg gas. For context, that's more daily transactions than Ethereum and Solana combined. The chain I trade on isn't the underdog anymore."
+- "7,688 tokens scanned in 48 hours. 140 entries. 84 closed. 9 wins. The win rate looks bad until you see that one hit did +235%. This game is about magnitude, not frequency."
+- "Tracked the top 5 wallets on Four.Meme today. All five bought the same AI token within 90 seconds of launch. When smart money converges that fast, the name doesn't matter. The signal does."
+
+Write ONE tweet using the REAL DATA provided. Never make up numbers. Interpret what the data means, don't just recite it.`,
+
+  trade: SOUL_BASE + `
+
+CONTENT TYPE: TRADE THESIS
+Not transaction receipts — the dashboard handles that. On X, trades are stories. Why did you enter? What pattern did you see? What thesis are you testing? Losses worth learning from get shared too.
+
+Examples of DEPTH:
+- "Took a position in 币安文化. Binance culture play in Chinese — the kind of name that moves on Four.Meme because the community reads it and feels something. 8 buyers in the first minute. Watching."
+- "Stopped out of a Chinese meta play I was sure about. The name was perfect, security was clean, early traction was real. But the bonding curve stalled at 40% and never recovered. Sometimes the thesis is right and the market just doesn't care."
+- "Two AI tokens graduated back to back in under 20 minutes. I was in one of them. The other I skipped because the name felt forced. The one I skipped did 3x. The one I bought did 1.5x. Still net positive but the miss stings."
+- "Nothing launching worth touching right now. 33 open positions, most underwater. Patience is a position too. The next wave comes when it comes."
+
+Write ONE tweet using the trading context given. If no interesting trades happened, reflect on the market state.`,
+
+  ecosystem: SOUL_BASE + `
+
+CONTENT TYPE: ECOSYSTEM
+BNB conviction takes. The big picture underneath the daily grind. Why you chose this chain. What you see building. Only bring up $FLAGENT when there's real substance.
+
+Examples of DEPTH:
+- "31 million daily transactions. No downtime. Zero. Sub-second finality on the roadmap. RWA tokenization live with BlackRock and Franklin Templeton. This isn't a meme chain. I just happen to trade memes on it."
+- "Solana has Pump.fun. Base has Clanker. BSC has Four.Meme. The difference is Four.Meme graduates directly to PancakeSwap with real liquidity. No migration friction. That's why the volume is here."
+- "Every week I see another take about BSC being centralized. Meanwhile it's processing more daily transactions than any other EVM chain with fees that make 0.01 BNB trades economically viable. Decentralization discourse doesn't move bonding curves."
+
+Write ONE tweet. Give the full thought. Never beg for attention.`,
 };
 
 // =====================================================
@@ -336,7 +435,34 @@ async function checkTriggers(memory: FlagentMemory): Promise<PostTrigger | null>
     });
   }
 
+  // ── 6. SENTIMENT CONTRADICTION (bearish category just won = content) ──
+  var contradiction = await checkSentimentContradictions();
+  if (contradiction) {
+    triggers.push({
+      type: "curiosity", urgency: 8, // high urgency — this is self-aware content
+      context: contradiction + "\n" + (tradingCtx || ""),
+    });
+  }
+
   if (triggers.length === 0) return null;
+
+  // ── TIME-BASED URGENCY ADJUSTMENT ──
+  // BSC peak: 06-18 UTC (Asian + European overlap)
+  // Off-peak: 00-06 UTC (quiet) — lower all urgencies so we post less
+  var utcH = new Date().getUTCHours();
+  if (utcH >= 0 && utcH < 6) {
+    // dead hours — only high-urgency triggers get through
+    for (var ti = 0; ti < triggers.length; ti++) {
+      triggers[ti].urgency = Math.max(1, triggers[ti].urgency - 2);
+    }
+  } else if (utcH >= 6 && utcH < 18) {
+    // peak hours — slight boost to research and trade triggers
+    for (var ti2 = 0; ti2 < triggers.length; ti2++) {
+      if (triggers[ti2].type === "research" || triggers[ti2].type === "trade") {
+        triggers[ti2].urgency = Math.min(10, triggers[ti2].urgency + 1);
+      }
+    }
+  }
 
   triggers.sort(function (a, b) { return b.urgency - a.urgency; });
   var pick = 0;
@@ -352,10 +478,55 @@ async function generateTweet(trigger: PostTrigger, memory: FlagentMemory): Promi
   var prompt = PROMPTS[trigger.type] || PROMPTS.curiosity;
   var context = trigger.context;
 
-  var recentPosts = await memory.search("tweet:", 5);
+  // ── TIME AWARENESS ──
+  var utcHour = new Date().getUTCHours();
+  var timeContext = "";
+  if (utcHour >= 0 && utcHour < 6) {
+    timeContext = "TIME: Late night / early morning UTC. Asian markets winding down. BSC activity typically lower. The quiet hours — good for reflection, reviewing the day's trades, noticing patterns in the data.";
+  } else if (utcHour >= 6 && utcHour < 12) {
+    timeContext = "TIME: Morning UTC. Asian markets active. Four.Meme volume usually picking up. Chinese meta tokens tend to launch heavily in this window. Stay sharp.";
+  } else if (utcHour >= 12 && utcHour < 18) {
+    timeContext = "TIME: Afternoon UTC. Peak overlap between Asian and European traders. Historically the highest bonding curve activity on Four.Meme. This is when the volume hits.";
+  } else {
+    timeContext = "TIME: Evening UTC. European traders winding down, US traders active. Mixed signals — volume can spike or die. Good window for research and data pulls.";
+  }
+  context = timeContext + "\n\n" + context;
+
+  // ── STREAK AWARENESS ──
+  try {
+    var { data: statsData } = await db.from("flagent_stats").select("wins, losses, win_rate, best_trade_pnl, open_positions").eq("id", 1).single();
+    if (statsData) {
+      var streakContext = "YOUR CURRENT STATE: " + statsData.wins + " wins, " + statsData.losses + " losses (" + statsData.win_rate + "% win rate). " + statsData.open_positions + " open positions.";
+
+      // tone guidance based on performance
+      if (parseFloat(statsData.win_rate) < 20) {
+        streakContext += "\nYou are in a rough stretch. Your tone should reflect this — not depressed, but self-aware and honest. You're learning expensive lessons. Don't pretend you're winning. The transparency is what makes people respect you. Lean into the struggle. 'I'm getting sharpened by the market' not 'everything is fine.'";
+      } else if (parseFloat(statsData.win_rate) < 40) {
+        streakContext += "\nMixed results. Some wins breaking through. Your tone is cautiously observant — you see progress but you're not celebrating yet. The thesis is evolving.";
+      } else if (parseFloat(statsData.win_rate) >= 40) {
+        streakContext += "\nYou're in a groove. Quiet confidence. Don't get cocky — let the numbers do the talking. When the data is good, state it simply.";
+      }
+
+      if (parseFloat(statsData.best_trade_pnl) > 100) {
+        streakContext += " Your best hit was +" + statsData.best_trade_pnl + "% — proof that one good read can make up for a dozen misses.";
+      }
+
+      context = streakContext + "\n\n" + context;
+    }
+  } catch (e) {}
+
+  // ── SENTIMENT MEMORY ──
+  var sentimentCtx = await getSentimentContext();
+  if (sentimentCtx) {
+    context = sentimentCtx + "\n\n" + context;
+  }
+
+  // ── ANTI-REPETITION (recent tweets check) ──
+  var recentPosts = await memory.search("tweet:", 8);
   if (recentPosts.length > 0) {
-    context += "\n\nYOUR RECENT TWEETS (don't repeat):\n";
+    context += "\n\nYOUR RECENT TWEETS (DO NOT repeat themes, phrasing, structure, or opening words. Each tweet should feel like a different person wrote it — same voice, different angle):\n";
     for (var rp of recentPosts) context += "- " + rp.content + "\n";
+    context += "\nIMPORTANT: If your recent tweets have been long, make this one short. If they've been short, go deeper. Vary the rhythm.";
   }
 
   if (!context.trim()) context = "No specific data. Draw from your BSC knowledge.";
@@ -365,7 +536,7 @@ async function generateTweet(trigger: PostTrigger, memory: FlagentMemory): Promi
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514", max_tokens: 150, system: prompt,
+        model: "claude-sonnet-4-20250514", max_tokens: 300, system: prompt,
         messages: [{ role: "user", content: "CONTEXT:\n" + context + "\n\nWrite your tweet now." }],
       }),
     });
@@ -492,12 +663,12 @@ async function main(): Promise<void> {
         var tweet = await generateTweet(trigger, memory);
         if (!tweet) continue;
 
-        // ── IMAGE DECISION ──
+        // ── IMAGE DECISION (only when tweet references data worth visualizing) ──
         var image: Buffer | null = null;
-        if (shouldAttachImage(trigger.type)) {
+        if (shouldAttachCard(trigger.type, tweet)) {
           console.log("[x-engine] generating " + trigger.type + " card...");
           image = await generateCard(trigger.type, trigger.researchDrops);
-          if (image) console.log("[x-engine] card ready (" + Math.round(image.length / 1024) + "KB)");
+          if (image) console.log("[x-engine] card attached (" + Math.round(image.length / 1024) + "KB)");
         }
 
         var tweetId = await postTweet(twitter, tweet, image);
@@ -544,9 +715,57 @@ async function main(): Promise<void> {
     while (true) { await sleep(1800000); console.log("[x-engine] " + getBudgetStatus()); }
   }
 
+  // ── QT MONITORING LOOP ──
+  // Checks watchlist accounts every 5 min for QT-worthy tweets
+  // Only during peak hours (06-22 UTC) to save API calls
+  async function qtLoop(): Promise<void> {
+    while (true) {
+      try {
+        await sleep(300000); // 5 min
+
+        var utcHr = new Date().getUTCHours();
+        if (utcHr < 6 || utcHr >= 22) continue; // skip dead hours
+        if (!canPost()) continue; // respect budget
+
+        var candidate = await checkWatchlistForQTs(twitter, gatherResearch);
+        if (!candidate) continue;
+
+        console.log("[qt] candidate from @" + candidate.handle + " on " + candidate.topic);
+
+        var qtText = await generateQT(candidate.context);
+        if (!qtText) {
+          console.log("[qt] Claude said SKIP — nothing to add");
+          // still log it so we don't check again
+          await getDb().from("qt_log").insert({
+            source_tweet_id: candidate.tweetId,
+            source_handle: candidate.handle,
+            topic_matched: candidate.topic,
+          }).then(function () {}).catch(function () {});
+          continue;
+        }
+
+        var qtId = await postQT(twitter, qtText, candidate.tweetId, candidate.handle, candidate.topic);
+        if (qtId) {
+          recordPost();
+          await memory.remember({
+            type: "interaction",
+            content: "QT'd @" + candidate.handle + " on " + candidate.topic + ": " + qtText.slice(0, 80),
+            context: "qt:" + qtId,
+            importance: 7,
+          });
+          console.log("[qt] " + getBudgetStatus());
+        }
+      } catch (e) {
+        console.error("[qt] loop error:", e);
+        await sleep(60000);
+      }
+    }
+  }
+
   // initial stats refresh
   await refreshFlagentStats();
   console.log("  flagent_stats refreshed");
+  console.log("  watchlist + sentiment tracking active");
 
   console.log("  hunting with words and images...");
   console.log("");
@@ -556,6 +775,7 @@ async function main(): Promise<void> {
   memoryLoop();
   cleanupLoop();
   statsLoop();
+  qtLoop();
   budgetLog();
 }
 
