@@ -22,12 +22,17 @@ export default function Home() {
   var lines = _lines[0], setLines = _lines[1];
   var _stats = useState({ bal:"—", pnl:"—", pos:0, wallet:"" });
   var stats = _stats[0], setStats = _stats[1];
+  var _card = useState({ buys:0, sells:0, open:0, closed:0, scanned:0, winRate:"—" });
+  var card = _card[0], setCard = _card[1];
   var _live = useState(false);
   var live = _live[0], setLive = _live[1];
   var _tick = useState(0);
   var setTick = _tick[1];
+  var _showCard = useState(false);
+  var showCard = _showCard[0], setShowCard = _showCard[1];
   var videoRef = useRef(null);
 
+  // Autoplay fix
   useEffect(function() {
     var vid = videoRef.current;
     if (!vid) return;
@@ -55,6 +60,7 @@ export default function Home() {
     return function() { if (vid) vid.removeEventListener("loadeddata", tryPlay); };
   }, []);
 
+  // Initial load
   useEffect(function() {
     fetch(SB + "/rest/v1/feed?order=created_at.desc&limit=14", { headers: HEADERS })
       .then(function(r) { return r.json(); })
@@ -70,6 +76,11 @@ export default function Home() {
           }));
         }
       }).catch(function() {});
+    fetchStatus();
+    fetchCard();
+  }, []);
+
+  function fetchStatus() {
     fetch(SB + "/rest/v1/bot_status?id=eq.1", { headers: HEADERS })
       .then(function(r) { return r.json(); })
       .then(function(d) {
@@ -83,8 +94,32 @@ export default function Home() {
           });
         }
       }).catch(function() {});
-  }, []);
+  }
 
+  function fetchCard() {
+    // Get trade counts
+    Promise.all([
+      fetch(SB + "/rest/v1/trades?status=eq.confirmed&side=eq.buy&select=id", { headers: HEADERS }).then(function(r) { return r.json(); }),
+      fetch(SB + "/rest/v1/trades?status=eq.confirmed&side=eq.sell&select=id", { headers: HEADERS }).then(function(r) { return r.json(); }),
+      fetch(SB + "/rest/v1/positions?status=eq.open&select=id", { headers: HEADERS }).then(function(r) { return r.json(); }),
+      fetch(SB + "/rest/v1/positions?status=eq.closed&select=id,pnl_percent", { headers: HEADERS }).then(function(r) { return r.json(); }),
+      fetch(SB + "/rest/v1/feed?type=eq.detect&select=id", { headers: HEADERS }).then(function(r) { return r.json(); }),
+    ]).then(function(results) {
+      var buys = Array.isArray(results[0]) ? results[0].length : 0;
+      var sells = Array.isArray(results[1]) ? results[1].length : 0;
+      var open = Array.isArray(results[2]) ? results[2].length : 0;
+      var closed = Array.isArray(results[3]) ? results[3] : [];
+      var scanned = Array.isArray(results[4]) ? results[4].length : 0;
+      var wins = 0;
+      for (var i = 0; i < closed.length; i++) {
+        if (closed[i].pnl_percent > 0) wins++;
+      }
+      var wr = closed.length > 0 ? Math.round((wins / closed.length) * 100) + "%" : "—";
+      setCard({ buys: buys, sells: sells, open: open, closed: closed.length, scanned: scanned, winRate: wr });
+    }).catch(function() {});
+  }
+
+  // Poll
   useEffect(function() {
     var poll = setInterval(function() {
       var since = new Date(Date.now() - 5000).toISOString();
@@ -99,49 +134,33 @@ export default function Home() {
                 return { id: x.id, text: x.text, type: x.type, born: Date.now() };
               });
               if (fresh.length === 0) return p;
-              // Keep last 14 lines — old ones stay, new ones push them up
               return p.concat(fresh).slice(-14);
             });
           }
         }).catch(function() {});
-      fetch(SB + "/rest/v1/bot_status?id=eq.1", { headers: HEADERS })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-          if (d && d[0]) {
-            var b = d[0];
-            setStats({
-              bal: b.wallet_balance_bnb ? b.wallet_balance_bnb.toFixed(3) : "—",
-              pnl: b.total_pnl_bnb != null ? (b.total_pnl_bnb >= 0 ? "+" : "") + b.total_pnl_bnb.toFixed(3) : "—",
-              pos: b.active_positions || 0,
-              wallet: b.wallet_address || "",
-            });
-          }
-        }).catch(function() {});
+      fetchStatus();
     }, 3000);
-    return function() { clearInterval(poll); };
+    // Refresh card stats every 30s
+    var cardPoll = setInterval(fetchCard, 30000);
+    return function() { clearInterval(poll); clearInterval(cardPoll); };
   }, []);
 
+  // Render tick
   useEffect(function() {
     var t = setInterval(function() { setTick(function(n) { return n + 1; }); }, 80);
     return function() { clearInterval(t); };
   }, []);
 
-  // NO expire effect — lines stay on screen until new ones push them out
-
   function getStyle(line) {
     var age = Date.now() - line.born;
     var len = line.text.length;
     var tt = Math.min(len * 20, 800);
-    // Typewriter phase
     if (age < tt) return { o: Math.min(age / 150, 1), c: Math.floor((age / tt) * len) };
-    // Full brightness for 14 seconds
     if (age < 14000) return { o: 1, c: len };
-    // Fade to dim (not invisible) over 6 seconds — settles at 0.25
     if (age < 20000) {
       var fade = 1 - (age - 14000) / 6000;
       return { o: Math.max(fade, 0.25), c: len };
     }
-    // Stay dimmed — never disappear
     return { o: 0.25, c: len };
   }
 
@@ -155,25 +174,17 @@ export default function Home() {
         "@keyframes breathe{0%,100%{opacity:.25}50%{opacity:.85}}" +
         "@keyframes cursor{0%,100%{opacity:1}50%{opacity:0}}" +
         "a{text-decoration:none;color:inherit}" +
-        "a:hover{opacity:0.6}"
+        "a:hover{opacity:0.6}" +
+        "@keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}"
       }</style>
 
       <video
         ref={videoRef}
-        autoPlay
-        loop
-        muted
-        playsInline
-        preload="auto"
+        autoPlay loop muted playsInline preload="auto"
         style={{
-          position: "absolute",
-          top: 0, left: 0,
-          width: "100%", height: "100%",
-          objectFit: "cover",
-          opacity: 0.25,
-          filter: "grayscale(20%) brightness(0.8) contrast(1.1)",
-          pointerEvents: "none",
-          zIndex: 0,
+          position: "absolute", top: 0, left: 0, width: "100%", height: "100%",
+          objectFit: "cover", opacity: 0.25, filter: "grayscale(20%) brightness(0.8) contrast(1.1)",
+          pointerEvents: "none", zIndex: 0,
         }}
       >
         <source src={VIDEO_URL} type="video/mp4" />
@@ -194,14 +205,64 @@ export default function Home() {
             $FLAGENT
           </a>
         </div>
-        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: "#3a3530", display: "flex", justifyContent: "center", gap: 16 }}>
+        <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, color: "#3a3530", display: "flex", justifyContent: "center", gap: 16, alignItems: "center" }}>
           <a href={walletUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#4a4539", transition: "opacity 0.2s" }}>
             {stats.bal} BNB
           </a>
           <span style={{ color: "#5a7a4a" }}>{stats.pnl}</span>
           <span>{stats.pos} open</span>
+          <span
+            onClick={function() { setShowCard(!showCard); }}
+            style={{ color: "#c9a84c", opacity: 0.4, cursor: "pointer", transition: "opacity 0.2s", userSelect: "none" }}
+          >
+            {showCard ? "—" : "+"}
+          </span>
         </div>
       </div>
+
+      {/* FROST CARD — toggles on/off */}
+      {showCard && (
+        <div style={{
+          position: "relative", zIndex: 3, margin: "12px auto 0", maxWidth: 360, width: "calc(100% - 40px)",
+          background: "rgba(12, 11, 8, 0.65)",
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+          border: "1px solid rgba(201, 168, 76, 0.1)",
+          borderRadius: 8,
+          padding: "14px 18px",
+          animation: "cardIn 0.3s ease-out",
+        }}>
+          <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.2em", color: "#c9a84c", opacity: 0.5, marginBottom: 10 }}>
+            SESSION STATS
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px 12px", fontFamily: "'IBM Plex Mono',monospace" }}>
+            <div>
+              <div style={{ fontSize: 7, color: "#3a3530", letterSpacing: "0.15em", marginBottom: 2 }}>SCANNED</div>
+              <div style={{ fontSize: 13, color: "#6b6255" }}>{card.scanned}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 7, color: "#3a3530", letterSpacing: "0.15em", marginBottom: 2 }}>BUYS</div>
+              <div style={{ fontSize: 13, color: "#c9a84c" }}>{card.buys}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 7, color: "#3a3530", letterSpacing: "0.15em", marginBottom: 2 }}>SELLS</div>
+              <div style={{ fontSize: 13, color: "#6b6255" }}>{card.sells}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 7, color: "#3a3530", letterSpacing: "0.15em", marginBottom: 2 }}>OPEN</div>
+              <div style={{ fontSize: 13, color: "#c9a84c" }}>{card.open}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 7, color: "#3a3530", letterSpacing: "0.15em", marginBottom: 2 }}>CLOSED</div>
+              <div style={{ fontSize: 13, color: "#6b6255" }}>{card.closed}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 7, color: "#3a3530", letterSpacing: "0.15em", marginBottom: 2 }}>WIN RATE</div>
+              <div style={{ fontSize: 13, color: "#7a9a5a" }}>{card.winRate}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* COMMAND LINES */}
       <div style={{ flex: 1, position: "relative", zIndex: 2, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", padding: "0 16px 44px", maxWidth: 540, margin: "0 auto", width: "100%" }}>
