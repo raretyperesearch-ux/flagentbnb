@@ -230,17 +230,20 @@ RULES:
 - Be brief but substantive. The QT is your take, not a summary of theirs.
 - If you don't have relevant data to add, don't QT. Return "SKIP" instead.
 
-VOICE: Same as your timeline — calm, data-driven, observational. You're reacting as a researcher who happens to trade on the chain being discussed.`;
+VOICE: Same as your timeline — calm, data-driven, observational. You're reacting as a researcher who happens to trade on the chain being discussed.
 
-// Topic keywords that trigger QTs
+LANGUAGE: If the original tweet is in Chinese, write your QT in Chinese. If it's bilingual, match the mix. Same voice in both languages.`;
+
+// Topic keywords that trigger QTs — includes Chinese
 var TOPIC_TRIGGERS: Record<string, string[]> = {
   bsc: ["bsc", "bnb chain", "bnb smart chain", "binance smart chain", "bnbchain"],
-  four_meme: ["four.meme", "fourmeme", "four meme", "bonding curve", "4meme"],
+  four_meme: ["four.meme", "fourmeme", "four meme", "bonding curve", "4meme", "毕业", "绑定曲线"],
   bnb: ["$bnb", "bnb coin", "bnb price", "bnb ecosystem"],
-  meme: ["meme coin", "memecoin", "meme token", "meme season", "meme szn"],
-  binance: ["binance alpha", "binance listing", "binance wallet"],
+  meme: ["meme coin", "memecoin", "meme token", "meme season", "meme szn", "模因币"],
+  binance: ["binance alpha", "binance listing", "binance wallet", "币安"],
   flap_sh: ["flap.sh", "flapsh", "flap sh"],
-  ai_agent: ["ai agent", "autonomous agent", "onchain agent", "agent economy"],
+  ai_agent: ["ai agent", "autonomous agent", "onchain agent", "agent economy", "ai代理"],
+  chinese_meta: ["币安", "四点meme", "中文", "华语", "龙", "虾"],
 };
 
 function matchesTopic(tweetText: string, topics: string[]): string | null {
