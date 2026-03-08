@@ -9,6 +9,7 @@ var VIDEO_URL = "https://seartddspffufwiqzwvh.supabase.co/storage/v1/object/publ
 var GITHUB_URL = "https://github.com/raretyperesearch-ux/flagentbnb";
 var BSCSCAN_WALLET = "https://bscscan.com/address/0x6c8C4C62183B61E9dd0095e821B0F857b555b32d";
 var TOKEN_URL = "https://four.meme/token/0x1ff3506b0bc80c3ca027b6ceb7534fcfedccffff";
+var X_URL = "https://x.com/flagentbnb";
 
 var COL = { system:"#3a3530", detect:"#c9a84c", thought:"#6b6255", action:"#c9a84c", confirm:"#7a9a5a", monitor:"#4a4539", reject:"#6a4a3a" };
 var MOCK = [
@@ -191,7 +192,6 @@ export default function Home() {
     ? "https://bscscan.com/address/" + stats.wallet
     : BSCSCAN_WALLET;
 
-  // Calculate total invested in open positions
   var totalInvested = 0;
   for (var pi = 0; pi < positions.length; pi++) {
     totalInvested += parseFloat(positions[pi].cost_bnb) || 0;
@@ -223,7 +223,6 @@ export default function Home() {
       <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", background: "radial-gradient(ellipse at 50% 45%, #c9a84c0a 0%, transparent 55%)" }}/>
       <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", background: "linear-gradient(90deg, #05050399 0%, transparent 30%, transparent 70%, #05050399 100%)" }}/>
 
-      {/* HEADER */}
       <div style={{ position: "relative", zIndex: 2, padding: "24px 20px 0", textAlign: "center" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 6 }}>
           <span style={{ fontFamily: "'Cinzel',serif", fontSize: 16, fontWeight: 700, letterSpacing: "0.22em", color: "#c9a84c", opacity: 0.7 }}>FLAGENT</span>
@@ -249,7 +248,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* FROST CARD */}
       {showCard && (
         <div style={{
           position: "relative", zIndex: 3, margin: "12px auto 0", maxWidth: 380, width: "calc(100% - 32px)",
@@ -259,8 +257,6 @@ export default function Home() {
           padding: "14px 16px", animation: "cardIn 0.3s ease-out",
           maxHeight: "50vh", overflowY: "auto",
         }}>
-
-          {/* WALLET */}
           <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.2em", color: "#c9a84c", opacity: 0.5, marginBottom: 8 }}>
             WALLET
           </div>
@@ -275,7 +271,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* STATS GRID */}
           <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.2em", color: "#c9a84c", opacity: 0.5, marginBottom: 8 }}>
             SESSION
           </div>
@@ -306,7 +301,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* HOLDINGS */}
           {positions.length > 0 && (
             <div>
               <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.2em", color: "#c9a84c", opacity: 0.5, marginBottom: 8 }}>
@@ -337,7 +331,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* COMMAND LINES */}
       <div style={{ flex: 1, position: "relative", zIndex: 2, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", padding: "0 16px 44px", maxWidth: 540, margin: "0 auto", width: "100%" }}>
         {lines.map(function(l) {
           var s = getStyle(l);
@@ -370,9 +363,11 @@ export default function Home() {
         })}
       </div>
 
-      {/* FOOTER */}
       <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 20px 16px" }}>
-        <div style={{ display: "flex", justifyContent: "center", gap: 20, fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.15em" }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: 18, fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.15em" }}>
+          <a href={X_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#5a5347", transition: "opacity 0.2s" }}>
+            X
+          </a>
           <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#5a5347", transition: "opacity 0.2s" }}>
             GITHUB
           </a>
