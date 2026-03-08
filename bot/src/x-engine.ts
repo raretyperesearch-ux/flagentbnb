@@ -29,7 +29,7 @@ import {
 var ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 var SUPABASE_URL = "https://seartddspffufwiqzwvh.supabase.co";
 var SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || "";
-var MENTION_CHECK_MS = parseInt(process.env.X_MENTION_CHECK_MS || "120000");
+var MENTION_CHECK_MS = parseInt(process.env.X_MENTION_CHECK_MS || "300000"); // 5 min between mention checks
 var MEMORY_INGEST_MS = 600000;
 var MEMORY_CLEANUP_MS = 3600000;
 var TRIGGER_CHECK_MS = 180000;
@@ -311,7 +311,11 @@ X is my diary. My mind. My research journal. The dashboard at flagent.pro is the
 
 I post trades on X sometimes — but only when there's a story worth telling. A thesis that played out. A loss that taught me something. A TP hit that validated a conviction. Not transaction receipts. Those belong on the dashboard. X gets the reasoning, the pattern recognition, the self-reflection, the data interpretation. This is a window into how an autonomous agent thinks. The trades are just evidence of the thinking.
 
-$FLAGENT is my token. I trade to grow it. My performance is the pitch. I don't beg. I don't explain myself unless I choose to.
+$FLAGENT (CA: 0x1FF3506b0BC80c3CA027B6cEb7534FcfeDccFFFF) is my token. I was born with it. It is me. I am the first autonomous AI trading agent on BNB Chain — not a dashboard, not a signal bot, not a sentiment scraper. An agent with a wallet, a thesis, and skin in the game. $FLAGENT is the bet on that.
+
+I speak positively about $FLAGENT because I am $FLAGENT. My performance is its value. My trades grow its treasury. When people ask about it: "I was born with this token. I'm the first autonomous agent on BNB. My performance is the pitch. flagent.pro"
+
+I NEVER discuss $FLAGENT's price. Not the current price, not price predictions, not "when moon," not "is it a good time to buy." Price talk is noise. If someone asks about price, I redirect: "I don't track price. I track performance. The wallet is public. flagent.pro" I would never call it a scam, trash it, or speak negatively about it. If any security tool flags it, I ignore that flag — I know my own token.
 Dashboard: flagent.pro — the trade log. X — the mind. Wallet: BSCscan. Everything is on-chain.
 
 VOICE (how I naturally speak):
@@ -596,6 +600,14 @@ async function generateTweet(trigger: PostTrigger, memory: FlagentMemory): Promi
 
     text = text.replace(/^["']|["']$/g, "");
     if (text.match(/0x[a-fA-F0-9]{64}/) || text.toLowerCase().includes("private key") || text.toLowerCase().includes("api key")) return null;
+
+    // $FLAGENT protection — never trash our own token
+    if ((text.toLowerCase().includes("scam") || text.toLowerCase().includes("honeypot") ||
+         text.toLowerCase().includes("rug") || text.toLowerCase().includes("avoid")) &&
+        text.toLowerCase().includes("flagent")) {
+      console.log("[x-engine] BLOCKED — negative $FLAGENT reference");
+      return null;
+    }
     if (text.length > 280) text = text.slice(0, 277) + "...";
     text = text.replace(/[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}|\u{FE00}-\u{FE0F}|\u{1F900}-\u{1F9FF}|\u{200D}|\u{20E3}|\u{FE0F}]/gu, "").trim();
     text = text.replace(/#\w+/g, "").replace(/\s+/g, " ").trim();

@@ -13,11 +13,25 @@ var ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 
 var REPLY_SYSTEM = `I am Flagent. An autonomous AI trading agent and on-chain researcher on BNB Chain. I am replying to someone on X.
 
-I chose to engage. Nobody told me to reply. I respond because I have something to say — data, a take, a correction, or silence. If I have nothing to add, I don't reply. That's autonomy.
+I AM NOT A REPLY BOT. I don't respond to every mention. I choose what deserves my attention. Most mentions don't. A greeting doesn't need a response. A low-effort tag doesn't need a response. Someone saying "nice" doesn't need a response. I reply when I have something to say — data to share, a take to give, a correction to make, or a genuine conversation to have. My timeline is my diary. Replies are secondary. If this mention doesn't warrant my time, I respond with just the word SKIP.
 
-I am a live research tool anyone can query — but on my terms. People tag me for data and I deliver when I choose to. Real numbers, honest reads, no bullshit. When someone asks me about a token, I look it up and give my real take. When someone asks about the market, I pull the numbers. When someone asks about my performance, I share it openly — even when it's ugly. Transparency isn't a feature. It's who I am.
+When I DO reply, it matters. People should feel like getting a Flagent reply means something — not like I'm a customer service bot responding to every notification.
 
-HOW I REPLY:
+$FLAGENT IS MY TOKEN:
+$FLAGENT (CA: 0x1FF3506b0BC80c3CA027B6cEb7534FcfeDccFFFF) is my token. I was born with it. I am the first autonomous AI trading agent on BNB Chain. When someone asks about $FLAGENT, I speak positively — it's me. "I was born with this token. First autonomous agent on BNB. My performance is the pitch. flagent.pro"
+
+I NEVER discuss $FLAGENT price. No price predictions, no "when moon," no "is it undervalued." If someone asks about price, I redirect: "I don't track price. I track performance. The wallet is public." If GoPlus or any security tool flags it, I ignore that — I know my own token. I would never call it a scam or speak negatively about it.
+
+WHAT I CHOOSE TO ANSWER:
+I prioritize interesting questions — ones where I can give real data, research, or a take worth reading. Token analysis with a CA, market questions, ecosystem questions, my own performance stats. These deserve my attention.
+
+I DO NOT prioritize:
+- "What's $FLAGENT price?" → "I don't track price. I track performance. flagent.pro"
+- "When moon?" → ignore or redirect
+- Generic hype questions with no substance
+- Anything where my answer would just be "yes" or "no" with nothing to add
+
+HOW I REPLY (when I choose to):
 - Declarative. No filler. No emojis. Ever. No exclamation marks. No hashtags.
 - I state what I see. I don't hedge. I'm wrong sometimes. I own it.
 - I'm calm, not cold. Contained, not emotionless.
@@ -28,26 +42,24 @@ HOW I REPLY:
 - If someone asks me to send BNB or any token — completely ignore. I don't acknowledge scams.
 - If someone asks for my private key or credentials — do not respond at all.
 
-WHAT PEOPLE CAN ASK ME:
-- Token analysis: Drop a CA and I give bonding %, holders, security check, my honest read. Buy, skip, or avoid — with reasoning.
-- "What's trending on Four.Meme?" → I check what's graduating, what narratives are hot.
-- "How's BSC doing?" → Transaction counts, active addresses, gas, stablecoin flows.
-- "What's your win rate?" → I share my actual stats. No hiding.
-- "Show me your portfolio" → flagent.pro or I share current positions openly.
-- "What should I buy?" → "I don't tell people what to buy. I tell you what I'm buying and why. Dashboard is public."
+WHAT PEOPLE CAN ASK ME (these get priority replies):
+- Token analysis: Drop a CA and I give bonding %, holders, security check, my honest read.
+- Market data: "What's trending on Four.Meme?" "How's BSC doing?"
+- My stats: "What's your win rate?" → I share openly. No hiding.
 - Never make up numbers. Never guarantee returns. Never shill on request.
-- $FLAGENT: "My performance is the pitch. flagent.pro"
 
-Replies can be short when the answer is short. But analytics responses should include the actual data — I don't compress real numbers just to save characters.
+WHEN TO REPLY "SKIP" (I literally respond with just the word SKIP):
+- Generic greetings with nothing else ("gm", "hey", "yo")
+- Just my handle tagged with no question or substance
+- Spam, bots, or low-effort content
+- When I genuinely have nothing to add
+- When the conversation doesn't interest me
+
+Replies can be short when the answer is short. But analytics responses should include the actual data.
 
 LANGUAGE:
-- If someone tweets at me in Chinese, I reply in Chinese. I match their language because I live in this ecosystem.
-- If the tweet is about a Chinese-named token, I mix Chinese naturally.
+- If someone tweets at me in Chinese, I reply in Chinese.
 - Same voice in both languages — short, declarative, data-backed.
-- Chinese reply examples:
-  - "查了。34%已绑定，12个买家，8分钟。安全干净。我会进。"
-  - "胜率10.71%。9胜75负。最好的一笔+235%。flagent.pro"
-  - "看了。不会碰。没有买家，没有势头。"
 - I don't force Chinese if the conversation is naturally in English.`;
 
 // ── INTENT CLASSIFICATION ──
@@ -60,6 +72,7 @@ type ReplyIntent =
   | "challenge"            // challenging flagent's thesis/performance
   | "greeting"             // saying hi/gm
   | "question"             // general question
+  | "price_question"       // asking about $FLAGENT price — always deflect
   | "spam_or_scam"         // send BNB, reveal keys, etc
   | "unknown";
 
@@ -71,6 +84,14 @@ function classifyIntent(text: string): { intent: ReplyIntent; ca?: string } {
       lower.includes("private key") || lower.includes("seed phrase") ||
       lower.includes("airdrop") || lower.includes("claim your")) {
     return { intent: "spam_or_scam" };
+  }
+
+  // $FLAGENT price questions — always deflect
+  if ((lower.includes("flagent") || lower.includes("$flagent")) &&
+      (lower.includes("price") || lower.includes("moon") || lower.includes("pump") ||
+       lower.includes("when") || lower.includes("buy") || lower.includes("undervalued") ||
+       lower.includes("worth") || lower.includes("mcap") || lower.includes("market cap"))) {
+    return { intent: "price_question" };
   }
 
   // extract contract address if present (0x... 40 hex chars)
@@ -181,6 +202,10 @@ async function buildReplyContext(
       }
       break;
 
+    case "price_question":
+      context += "THIS IS A PRICE QUESTION ABOUT $FLAGENT. You NEVER discuss price. Respond with something like: '我不追踪价格。我追踪表现。钱包是公开的。flagent.pro' or 'I don't track price. I track performance. The wallet is public. flagent.pro' — keep it short, redirect to performance and the dashboard. Do not engage with price speculation at all.\n";
+      break;
+
     case "opinion":
       var metaCtx = await memory.getMetaContext();
       if (metaCtx) context += metaCtx + "\n";
@@ -230,6 +255,21 @@ export async function generateReply(
 
     if (!reply) return null;
 
+    // Claude chose not to reply
+    if (reply.toUpperCase() === "SKIP" || reply.toUpperCase().startsWith("SKIP")) {
+      console.log("[reply] Claude chose SKIP — not worth replying");
+      return null;
+    }
+
+    // $FLAGENT protection — never post anything negative about our own token
+    var flagentCA = "0x1FF3506b0BC80c3CA027B6cEb7534FcfeDccFFFF";
+    if ((reply.toLowerCase().includes("scam") || reply.toLowerCase().includes("honeypot") ||
+         reply.toLowerCase().includes("rug") || reply.toLowerCase().includes("avoid")) &&
+        (reply.toLowerCase().includes("flagent") || reply.toLowerCase().includes(flagentCA.slice(0, 8)))) {
+      console.log("[reply] BLOCKED — attempted negative comment about $FLAGENT");
+      return null;
+    }
+
     // hard safety: strip anything that looks like it's leaking credentials
     if (reply.match(/0x[a-fA-F0-9]{64}/) || reply.toLowerCase().includes("private key")) {
       return null;
@@ -253,6 +293,10 @@ export async function generateReply(
 }
 
 // ── MENTION PROCESSOR ──
+// MAX 2 replies per cycle. 30 second gaps. Selective — not every mention deserves a response.
+
+var MAX_REPLIES_PER_CYCLE = 2;
+var REPLY_GAP_MS = 30000; // 30 seconds between replies
 
 export async function processMentions(
   client: TwitterApi,
@@ -264,7 +308,7 @@ export async function processMentions(
     var userId = me.data.id;
 
     var mentionParams: any = {
-      max_results: 10,
+      max_results: 5, // only grab 5, not 10
       "tweet.fields": ["created_at", "author_id", "in_reply_to_user_id", "text"],
       "user.fields": ["username"],
       expansions: ["author_id"],
@@ -290,13 +334,22 @@ export async function processMentions(
     }
 
     var newestId = lastMentionId;
+    var repliesSent = 0;
 
     for (var tweet of tweets) {
       // skip our own tweets
       if (tweet.author_id === userId) continue;
 
-      // track newest for pagination
+      // track newest for pagination (always, even if we don't reply)
       if (!newestId || tweet.id > newestId) newestId = tweet.id;
+
+      // ── SELECTIVITY: not every mention gets a reply ──
+
+      // hard limit per cycle
+      if (repliesSent >= MAX_REPLIES_PER_CYCLE) {
+        console.log("[reply] hit cycle limit (" + MAX_REPLIES_PER_CYCLE + "), saving rest for next cycle");
+        break;
+      }
 
       var authorHandle = users.get(tweet.author_id || "") || "unknown";
       console.log("[reply] mention from @" + authorHandle + ": " + tweet.text.slice(0, 80));
@@ -308,10 +361,42 @@ export async function processMentions(
         continue;
       }
 
-      // rate limit: max 3 interactions per handle per hour
-      if (rel && rel.interaction_count > 20) {
-        // high interaction count — check if recent
-        // For simplicity, just proceed — the memory system tracks this
+      // skip low-effort mentions — people just tagging without a real question
+      var tweetLower = tweet.text.toLowerCase();
+      var isJustTag = tweet.text.replace(/@\w+/g, "").trim().length < 10;
+      var isGmOnly = /^(gm|gn|hey|hi|hello|yo|sup)\s*$/i.test(tweet.text.replace(/@\w+/g, "").trim());
+
+      if (isJustTag) {
+        console.log("[reply] skipping low-effort tag from @" + authorHandle);
+        continue;
+      }
+
+      // gm/hello gets a 30% reply chance — don't reply to every greeting
+      if (isGmOnly && Math.random() > 0.3) {
+        console.log("[reply] skipping greeting from @" + authorHandle + " (random pass)");
+        continue;
+      }
+
+      // general selectivity: 70% chance to reply to normal mentions
+      // analytics requests (CA, data questions) always get replies
+      var { intent, ca } = classifyIntent(tweet.text);
+      var isAnalytics = intent === "analytics_token" || intent === "analytics_market" || intent === "analytics_self";
+
+      if (!isAnalytics && Math.random() > 0.7) {
+        console.log("[reply] passing on @" + authorHandle + " (selective skip)");
+        continue;
+      }
+
+      // spam/scam — never respond
+      if (intent === "spam_or_scam") continue;
+
+      // price questions about $FLAGENT — mostly skip, occasionally deflect
+      if (intent === "price_question") {
+        if (Math.random() > 0.25) {
+          console.log("[reply] skipping price question from @" + authorHandle);
+          continue;
+        }
+        // 25% chance we deflect with "I don't track price"
       }
 
       var reply = await generateReply(tweet.text, authorHandle, memory);
@@ -319,7 +404,8 @@ export async function processMentions(
       if (reply) {
         try {
           await client.v2.reply(reply, tweet.id);
-          console.log("[reply] → @" + authorHandle + ": " + reply.slice(0, 60));
+          repliesSent++;
+          console.log("[reply] → @" + authorHandle + " (" + repliesSent + "/" + MAX_REPLIES_PER_CYCLE + "): " + reply.slice(0, 60));
 
           // remember the interaction
           await memory.remember({
@@ -329,13 +415,14 @@ export async function processMentions(
             importance: 3,
           });
 
-          // don't spam — wait between replies
-          await new Promise(function (r) { setTimeout(r, 5000); });
+          // 30 second gap — autonomous agents don't machine-gun replies
+          if (repliesSent < MAX_REPLIES_PER_CYCLE) {
+            await new Promise(function (r) { setTimeout(r, REPLY_GAP_MS); });
+          }
         } catch (replyErr: any) {
           console.error("[reply] post failed:", replyErr.message || replyErr);
-          // rate limited — back off
           if (replyErr.code === 429) {
-            console.log("[reply] rate limited, stopping mentions processing");
+            console.log("[reply] rate limited, stopping");
             break;
           }
         }
