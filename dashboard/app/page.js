@@ -1,4 +1,4 @@
-use client";
+"use client";
 import { useState, useEffect, useRef } from "react";
 
 var SB = "https://seartddspffufwiqzwvh.supabase.co";
@@ -7,7 +7,7 @@ var HEADERS = { apikey: KEY, Authorization: "Bearer " + KEY };
 var VIDEO_URL = "https://seartddspffufwiqzwvh.supabase.co/storage/v1/object/public/assets/flagent-bg.mp4";
 var GITHUB_URL = "https://github.com/raretyperesearch-ux/flagentbnb";
 var BSCSCAN_WALLET = "https://bscscan.com/address/0x6c8C4C62183B61E9dd0095e821B0F857b555b32d";
-var TOKEN_URL = "https://flap.sh/bnb/0xbc443965124fb401fa814550e3f7ecb825527777";
+var TOKEN_URL = "https://four.meme/token/0x1ff3506b0bc80c3ca027b6ceb7534fcfedccffff";
 
 var COL = { system:"#3a3530", detect:"#c9a84c", thought:"#6b6255", action:"#c9a84c", confirm:"#7a9a5a", monitor:"#4a4539", reject:"#6a4a3a" };
 var MOCK = [
@@ -32,7 +32,6 @@ export default function Home() {
   var showCard = _showCard[0], setShowCard = _showCard[1];
   var videoRef = useRef(null);
 
-  // Autoplay fix
   useEffect(function() {
     var vid = videoRef.current;
     if (!vid) return;
@@ -60,7 +59,6 @@ export default function Home() {
     return function() { if (vid) vid.removeEventListener("loadeddata", tryPlay); };
   }, []);
 
-  // Initial load
   useEffect(function() {
     fetch(SB + "/rest/v1/feed?order=created_at.desc&limit=14", { headers: HEADERS })
       .then(function(r) { return r.json(); })
@@ -97,7 +95,6 @@ export default function Home() {
   }
 
   function fetchCard() {
-    // Get trade counts
     Promise.all([
       fetch(SB + "/rest/v1/trades?status=eq.confirmed&side=eq.buy&select=id", { headers: HEADERS }).then(function(r) { return r.json(); }),
       fetch(SB + "/rest/v1/trades?status=eq.confirmed&side=eq.sell&select=id", { headers: HEADERS }).then(function(r) { return r.json(); }),
@@ -119,7 +116,6 @@ export default function Home() {
     }).catch(function() {});
   }
 
-  // Poll
   useEffect(function() {
     var poll = setInterval(function() {
       var since = new Date(Date.now() - 5000).toISOString();
@@ -140,12 +136,10 @@ export default function Home() {
         }).catch(function() {});
       fetchStatus();
     }, 3000);
-    // Refresh card stats every 30s
     var cardPoll = setInterval(fetchCard, 30000);
     return function() { clearInterval(poll); clearInterval(cardPoll); };
   }, []);
 
-  // Render tick
   useEffect(function() {
     var t = setInterval(function() { setTick(function(n) { return n + 1; }); }, 80);
     return function() { clearInterval(t); };
@@ -194,7 +188,6 @@ export default function Home() {
       <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", background: "radial-gradient(ellipse at 50% 45%, #c9a84c0a 0%, transparent 55%)" }}/>
       <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", background: "linear-gradient(90deg, #05050399 0%, transparent 30%, transparent 70%, #05050399 100%)" }}/>
 
-      {/* HEADER */}
       <div style={{ position: "relative", zIndex: 2, padding: "24px 20px 0", textAlign: "center" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 6 }}>
           <span style={{ fontFamily: "'Cinzel',serif", fontSize: 16, fontWeight: 700, letterSpacing: "0.22em", color: "#c9a84c", opacity: 0.7 }}>FLAGENT</span>
@@ -220,17 +213,13 @@ export default function Home() {
         </div>
       </div>
 
-      {/* FROST CARD — toggles on/off */}
       {showCard && (
         <div style={{
           position: "relative", zIndex: 3, margin: "12px auto 0", maxWidth: 360, width: "calc(100% - 40px)",
           background: "rgba(12, 11, 8, 0.65)",
-          backdropFilter: "blur(16px)",
-          WebkitBackdropFilter: "blur(16px)",
-          border: "1px solid rgba(201, 168, 76, 0.1)",
-          borderRadius: 8,
-          padding: "14px 18px",
-          animation: "cardIn 0.3s ease-out",
+          backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
+          border: "1px solid rgba(201, 168, 76, 0.1)", borderRadius: 8,
+          padding: "14px 18px", animation: "cardIn 0.3s ease-out",
         }}>
           <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.2em", color: "#c9a84c", opacity: 0.5, marginBottom: 10 }}>
             SESSION STATS
@@ -264,7 +253,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* COMMAND LINES */}
       <div style={{ flex: 1, position: "relative", zIndex: 2, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", padding: "0 16px 44px", maxWidth: 540, margin: "0 auto", width: "100%" }}>
         {lines.map(function(l) {
           var s = getStyle(l);
@@ -297,7 +285,6 @@ export default function Home() {
         })}
       </div>
 
-      {/* FOOTER */}
       <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 20px 16px" }}>
         <div style={{ display: "flex", justifyContent: "center", gap: 20, fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.15em" }}>
           <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#5a5347", transition: "opacity 0.2s" }}>
