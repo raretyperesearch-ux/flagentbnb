@@ -1,4 +1,4 @@
-"use client";
+use client";
 import { useState, useEffect, useRef } from "react";
 
 var SB = "https://seartddspffufwiqzwvh.supabase.co";
