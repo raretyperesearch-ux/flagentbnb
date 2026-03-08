@@ -1,43 +1,41 @@
 // =====================================================
-// FLAGENT X ENGINE — RESEARCH (DUNE INTEGRATION)
-// Pulls on-chain data for research drops
+// FLAGENT X ENGINE — RESEARCH (DUNE → SUPABASE CACHE)
+// Fetches Dune data, caches in Supabase, reads from cache
+// Tables: dune_cache, analytics_snapshots, flagent_stats
 // =====================================================
+
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 var DUNE_API_KEY = process.env.DUNE_API_KEY || "";
 var DUNE_BASE = "https://api.dune.com/api/v1";
+var SUPABASE_URL = "https://seartddspffufwiqzwvh.supabase.co";
+var SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || "";
+var CACHE_TTL_MS = 30 * 60 * 1000; // 30 min cache
 
-interface DuneResult {
-  rows: any[];
-  metadata?: any;
+var db: SupabaseClient;
+
+function getDb(): SupabaseClient {
+  if (!db) db = createClient(SUPABASE_URL, SUPABASE_KEY);
+  return db;
 }
 
-async function duneQuery(queryId: number, params?: Record<string, string>): Promise<DuneResult | null> {
-  if (!DUNE_API_KEY) return null;
+// ── DUNE QUERY EXECUTION ──
+
+async function duneQuery(queryId: number): Promise<any[] | null> {
+  if (!DUNE_API_KEY || !queryId) return null;
 
   try {
-    // execute query
-    var execBody: any = {};
-    if (params) {
-      execBody.query_parameters = params;
-    }
-
     var execRes = await fetch(DUNE_BASE + "/query/" + queryId + "/execute", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-DUNE-API-KEY": DUNE_API_KEY,
-      },
-      body: JSON.stringify(execBody),
+      headers: { "Content-Type": "application/json", "X-DUNE-API-KEY": DUNE_API_KEY },
+      body: JSON.stringify({}),
     });
-
     var execData = await execRes.json();
     var executionId = execData.execution_id;
     if (!executionId) return null;
 
-    // poll for results (max 60s)
     for (var attempt = 0; attempt < 20; attempt++) {
       await sleep(3000);
-
       var statusRes = await fetch(DUNE_BASE + "/execution/" + executionId + "/status", {
         headers: { "X-DUNE-API-KEY": DUNE_API_KEY },
       });
@@ -48,29 +46,77 @@ async function duneQuery(queryId: number, params?: Record<string, string>): Prom
           headers: { "X-DUNE-API-KEY": DUNE_API_KEY },
         });
         var resultData = await resultRes.json();
-        return { rows: resultData.result?.rows || [], metadata: resultData.result?.metadata };
+        return resultData.result?.rows || [];
       }
-
-      if (statusData.state === "QUERY_STATE_FAILED") {
-        console.error("[dune] query " + queryId + " failed:", statusData.error);
-        return null;
-      }
+      if (statusData.state === "QUERY_STATE_FAILED") return null;
     }
-
     return null;
   } catch (e) {
-    console.error("[dune] query failed:", e);
+    console.error("[research] dune query failed:", e);
     return null;
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise(function (resolve) { setTimeout(resolve, ms); });
+// ── SUPABASE CACHE ──
+
+async function getCached(queryName: string): Promise<any | null> {
+  try {
+    var { data } = await getDb()
+      .from("dune_cache")
+      .select("result, expires_at")
+      .eq("query_name", queryName)
+      .single();
+
+    if (data && new Date(data.expires_at) > new Date()) {
+      return data.result;
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
 }
 
-// ── RESEARCH QUERIES ──
-// These query IDs need to be set up in Dune. Placeholder IDs below —
-// replace with your actual saved query IDs.
+async function setCache(queryName: string, result: any, ttlMs: number = CACHE_TTL_MS): Promise<void> {
+  try {
+    var expiresAt = new Date(Date.now() + ttlMs).toISOString();
+    await getDb().from("dune_cache").upsert({
+      query_name: queryName,
+      result: result,
+      fetched_at: new Date().toISOString(),
+      expires_at: expiresAt,
+    }, { onConflict: "query_name" });
+  } catch (e) {}
+}
+
+// ── FETCH WITH CACHE ──
+
+async function fetchWithCache(queryName: string, queryId: number, ttlMs?: number): Promise<any | null> {
+  // try cache first
+  var cached = await getCached(queryName);
+  if (cached) {
+    console.log("[research] cache hit: " + queryName);
+    return cached;
+  }
+
+  // fetch from Dune
+  console.log("[research] fetching from Dune: " + queryName);
+  var rows = await duneQuery(queryId);
+  if (rows && rows.length > 0) {
+    await setCache(queryName, rows, ttlMs);
+    return rows;
+  }
+  return null;
+}
+
+// ── QUERY IDS FROM ENV ──
+
+function qid(envVar: string): number {
+  return parseInt(process.env[envVar] || "0");
+}
+
+// =====================================================
+// RESEARCH FETCHERS
+// =====================================================
 
 export interface ResearchDrop {
   topic: string;
@@ -78,63 +124,56 @@ export interface ResearchDrop {
   raw?: any;
 }
 
-// BSC daily transaction count + active addresses
+// ── BSC ECOSYSTEM HEALTH ──
+
 export async function fetchBSCHealth(): Promise<ResearchDrop | null> {
-  // Query: BSC daily txn count, active addresses, gas price avg
-  // Replace with your actual Dune query ID
-  var QUERY_ID = parseInt(process.env.DUNE_QUERY_BSC_HEALTH || "0");
-  if (!QUERY_ID) {
-    // Fallback: use BscScan API for basic stats
-    return await fetchBSCHealthFallback();
-  }
+  var id = qid("DUNE_QUERY_BSC_HEALTH");
+  if (!id) return await fetchBSCHealthFallback();
 
-  var result = await duneQuery(QUERY_ID);
-  if (!result || result.rows.length === 0) return null;
+  var rows = await fetchWithCache("bsc_health", id, 60 * 60 * 1000); // 1hr cache
+  if (!rows || rows.length === 0) return await fetchBSCHealthFallback();
 
-  var row = result.rows[0];
-  return {
-    topic: "bsc_health",
-    data: "BSC today: " + formatNum(row.txn_count) + " transactions, " +
-      formatNum(row.active_addresses) + " active addresses" +
-      (row.avg_gas ? ", avg gas " + row.avg_gas.toFixed(2) + " Gwei" : ""),
-    raw: row,
-  };
+  var row = rows[0];
+  var data = "BSC yesterday: " + formatNum(row.txn_count) + " transactions, " +
+    formatNum(row.active_addresses) + " active addresses" +
+    (row.avg_gas_gwei ? ", avg gas " + row.avg_gas_gwei.toFixed(2) + " Gwei" : "");
+
+  // store snapshot
+  await storeSnapshot("bsc_health", row);
+
+  return { topic: "bsc_health", data: data, raw: row };
 }
 
 async function fetchBSCHealthFallback(): Promise<ResearchDrop | null> {
   try {
-    // Use public BNB Chain stats endpoint
     var res = await fetch("https://api.bscscan.com/api?module=proxy&action=eth_blockNumber&apikey=YourApiKeyToken");
     var data = await res.json();
     if (data.result) {
       var blockNum = parseInt(data.result, 16);
-      return {
-        topic: "bsc_health",
-        data: "BSC block height: " + blockNum.toLocaleString() + ". Chain running.",
-        raw: { blockNumber: blockNum },
-      };
+      return { topic: "bsc_health", data: "BSC block height: " + blockNum.toLocaleString(), raw: { blockNumber: blockNum } };
     }
     return null;
-  } catch (e) {
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
-// Four.Meme volume + graduation stats
+// ── FOUR.MEME STATS ──
+
 export async function fetchFourMemeStats(): Promise<ResearchDrop | null> {
-  var QUERY_ID = parseInt(process.env.DUNE_QUERY_FOURMEME || "0");
-  if (!QUERY_ID) return null;
+  var id = qid("DUNE_QUERY_FOURMEME");
+  if (!id) return null;
 
-  var result = await duneQuery(QUERY_ID);
-  if (!result || result.rows.length === 0) return null;
+  var rows = await fetchWithCache("four_meme_stats", id);
+  if (!rows || rows.length === 0) return null;
 
-  var row = result.rows[0];
+  var row = rows[0];
   var parts: string[] = [];
-
-  if (row.total_launches) parts.push(formatNum(row.total_launches) + " launches");
-  if (row.graduations) parts.push(row.graduations + " graduated");
+  if (row.total_txns) parts.push(formatNum(row.total_txns) + " transactions");
+  if (row.unique_traders) parts.push(formatNum(row.unique_traders) + " unique traders");
   if (row.total_volume_bnb) parts.push(row.total_volume_bnb.toFixed(1) + " BNB volume");
-  if (row.avg_bonding_time_min) parts.push("avg bonding " + Math.round(row.avg_bonding_time_min) + " min");
+  if (row.total_launches) parts.push(formatNum(row.total_launches) + " launches");
+  if (row.avg_trade_bnb) parts.push("avg trade " + row.avg_trade_bnb.toFixed(3) + " BNB");
+
+  await storeSnapshot("four_meme", row);
 
   return {
     topic: "four_meme_stats",
@@ -143,16 +182,17 @@ export async function fetchFourMemeStats(): Promise<ResearchDrop | null> {
   };
 }
 
-// Token category performance (AI vs animal vs Chinese vs political)
-export async function fetchCategoryPerformance(): Promise<ResearchDrop | null> {
-  var QUERY_ID = parseInt(process.env.DUNE_QUERY_CATEGORIES || "0");
-  if (!QUERY_ID) return null;
+// ── CATEGORY PERFORMANCE ──
 
-  var result = await duneQuery(QUERY_ID);
-  if (!result || result.rows.length === 0) return null;
+export async function fetchCategoryPerformance(): Promise<ResearchDrop | null> {
+  var id = qid("DUNE_QUERY_CATEGORIES");
+  if (!id) return null;
+
+  var rows = await fetchWithCache("category_performance", id);
+  if (!rows || rows.length === 0) return null;
 
   var lines: string[] = [];
-  for (var row of result.rows) {
+  for (var row of rows) {
     if (row.category && row.avg_multiplier) {
       lines.push(row.category + ": " + row.avg_multiplier.toFixed(2) + "x avg (" + row.count + " tokens)");
     }
@@ -160,75 +200,192 @@ export async function fetchCategoryPerformance(): Promise<ResearchDrop | null> {
 
   return {
     topic: "category_performance",
-    data: "Category performance today:\n" + lines.join("\n"),
-    raw: result.rows,
+    data: "Category performance:\n" + lines.join("\n"),
+    raw: rows,
   };
 }
 
-// Top performing wallets on Four.Meme
+// ── SMART MONEY ──
+
 export async function fetchSmartMoney(): Promise<ResearchDrop | null> {
-  var QUERY_ID = parseInt(process.env.DUNE_QUERY_SMART_MONEY || "0");
-  if (!QUERY_ID) return null;
+  var id = qid("DUNE_QUERY_SMART_MONEY");
+  if (!id) return null;
 
-  var result = await duneQuery(QUERY_ID);
-  if (!result || result.rows.length === 0) return null;
+  var rows = await fetchWithCache("smart_money", id);
+  if (!rows || rows.length === 0) return null;
 
-  var topWallets = result.rows.slice(0, 5);
-  var summary = topWallets.length + " wallets with " +
-    topWallets.filter(function (w: any) { return w.win_rate > 60; }).length +
-    " above 60% win rate in the last 24h";
+  var topCount = Math.min(rows.length, 5);
+  var heavyTraders = rows.filter(function (w: any) { return w.txn_count >= 5; });
 
   return {
     topic: "smart_money",
-    data: summary,
-    raw: topWallets,
+    data: topCount + " top wallets on Four.Meme in last 24h. " +
+      heavyTraders.length + " with 5+ trades. " +
+      "Largest: " + formatNum(rows[0].total_bnb) + " BNB deployed.",
+    raw: rows.slice(0, 5),
   };
 }
 
-// Flap.sh stats
-export async function fetchFlapStats(): Promise<ResearchDrop | null> {
-  var QUERY_ID = parseInt(process.env.DUNE_QUERY_FLAP || "0");
-  if (!QUERY_ID) return null;
+// ── FLAGENT PERFORMANCE (from Dune — on-chain verified) ──
 
-  var result = await duneQuery(QUERY_ID);
-  if (!result || result.rows.length === 0) return null;
+export async function fetchFlagentOnChain(): Promise<ResearchDrop | null> {
+  var id = qid("DUNE_QUERY_FLAGENT_PERFORMANCE");
+  if (!id) return null;
 
-  var row = result.rows[0];
+  var rows = await fetchWithCache("flagent_onchain", id, 60 * 60 * 1000);
+  if (!rows || rows.length === 0) return null;
+
+  var row = rows[0];
   return {
-    topic: "flap_stats",
-    data: "Flap.sh: " + (row.launches || "?") + " launches, " +
-      (row.volume_bnb ? row.volume_bnb.toFixed(1) + " BNB volume" : "volume unknown"),
+    topic: "flagent_performance",
+    data: "On-chain verified: " + row.total_txns + " transactions, " +
+      row.buys + " buys, " + (row.total_bnb_spent?.toFixed(2) || "?") + " BNB deployed. " +
+      "Active " + row.active_days + " days. " +
+      "Four.Meme: " + row.four_meme_txns + " | Flap.sh: " + row.flap_txns,
     raw: row,
   };
 }
 
-// ── AGGREGATE RESEARCH FOR A TWEET ──
+// ── FLAP.SH STATS ──
+
+export async function fetchFlapStats(): Promise<ResearchDrop | null> {
+  var id = qid("DUNE_QUERY_FLAP");
+  if (!id) return null;
+
+  var rows = await fetchWithCache("flap_stats", id);
+  if (!rows || rows.length === 0) return null;
+
+  var row = rows[0];
+  return {
+    topic: "flap_stats",
+    data: "Flap.sh: " + formatNum(row.total_txns) + " transactions, " +
+      formatNum(row.unique_traders) + " traders, " +
+      (row.total_volume_bnb?.toFixed(1) || "?") + " BNB volume",
+    raw: row,
+  };
+}
+
+// ── CHAIN COMPARE ──
+
+export async function fetchChainCompare(): Promise<ResearchDrop | null> {
+  var id = qid("DUNE_QUERY_CHAIN_COMPARE");
+  if (!id) return null;
+
+  var rows = await fetchWithCache("chain_compare", id, 60 * 60 * 1000);
+  if (!rows || rows.length === 0) return null;
+
+  var lines: string[] = [];
+  for (var row of rows) {
+    lines.push(row.chain + ": " + formatNum(row.txns) + " txns/24h");
+  }
+
+  return {
+    topic: "chain_compare",
+    data: "24h transactions:\n" + lines.join("\n"),
+    raw: rows,
+  };
+}
+
+// ── FLAGENT STATS FROM SUPABASE (always available, no Dune needed) ──
+
+export async function fetchFlagentStats(): Promise<ResearchDrop | null> {
+  try {
+    var { data } = await getDb().from("flagent_stats").select("*").eq("id", 1).single();
+    if (!data) return null;
+
+    return {
+      topic: "flagent_stats",
+      data: "Flagent: " + data.tokens_scanned + " scanned, " +
+        data.total_buys + " buys, " + data.wins + " wins / " + data.losses + " losses (" +
+        data.win_rate + "% win rate). Best: +" + data.best_trade_pnl + "%. " +
+        data.total_bnb_deployed + " BNB deployed total.",
+      raw: data,
+    };
+  } catch (e) { return null; }
+}
+
+// ── REFRESH FLAGENT_STATS (call periodically from x-engine) ──
+
+export async function refreshFlagentStats(): Promise<void> {
+  try {
+    await getDb().rpc("refresh_flagent_stats_inline", {});
+  } catch (e) {
+    // fallback: do it manually
+    try {
+      await getDb().from("flagent_stats").update({
+        tokens_scanned: 0, // will be set by raw query
+        updated_at: new Date().toISOString(),
+      }).eq("id", 1);
+
+      // use execute_sql equivalent through supabase-js? No — just update via counts
+      // The x-engine will call this, and the actual numbers come from the tables
+      var [scannedRes, buysRes, sellsRes, openRes, closedRes, winsRes] = await Promise.all([
+        getDb().from("feed").select("*", { count: "exact", head: true }).eq("type", "detect"),
+        getDb().from("trades").select("*", { count: "exact", head: true }).eq("side", "buy").eq("status", "confirmed"),
+        getDb().from("trades").select("*", { count: "exact", head: true }).eq("side", "sell").eq("status", "confirmed"),
+        getDb().from("positions").select("*", { count: "exact", head: true }).eq("status", "open"),
+        getDb().from("positions").select("pnl_percent", { count: "exact", head: true }).eq("status", "closed"),
+        getDb().from("positions").select("pnl_percent").eq("status", "closed").gt("pnl_percent", 0),
+      ]);
+
+      var totalClosed = closedRes.count || 0;
+      var totalWins = (winsRes.data || []).length;
+      var wr = totalClosed > 0 ? Math.round((totalWins / totalClosed) * 100 * 100) / 100 : 0;
+
+      await getDb().from("flagent_stats").update({
+        tokens_scanned: scannedRes.count || 0,
+        total_buys: buysRes.count || 0,
+        total_sells: sellsRes.count || 0,
+        open_positions: openRes.count || 0,
+        closed_positions: totalClosed,
+        wins: totalWins,
+        losses: totalClosed - totalWins,
+        win_rate: wr,
+        updated_at: new Date().toISOString(),
+      }).eq("id", 1);
+
+      console.log("[research] flagent_stats refreshed");
+    } catch (e2) {
+      console.error("[research] stats refresh failed:", e2);
+    }
+  }
+}
+
+// =====================================================
+// AGGREGATE RESEARCH
+// =====================================================
 
 export async function gatherResearch(): Promise<ResearchDrop[]> {
   var drops: ResearchDrop[] = [];
 
+  // Always include Flagent's own stats (from Supabase, instant)
+  var selfStats = await fetchFlagentStats();
+  if (selfStats) drops.push(selfStats);
+
+  // Dune-powered (cached in Supabase)
   var results = await Promise.allSettled([
     fetchBSCHealth(),
     fetchFourMemeStats(),
-    fetchCategoryPerformance(),
     fetchSmartMoney(),
     fetchFlapStats(),
+    fetchFlagentOnChain(),
+    fetchChainCompare(),
+    fetchCategoryPerformance(),
   ]);
 
   for (var r of results) {
-    if (r.status === "fulfilled" && r.value) {
-      drops.push(r.value);
-    }
+    if (r.status === "fulfilled" && r.value) drops.push(r.value);
   }
 
   return drops;
 }
 
-// ── LIVE TOKEN LOOKUP (for reply analytics) ──
+// =====================================================
+// TOKEN LOOKUP (for reply analytics)
+// =====================================================
 
 export async function lookupToken(address: string): Promise<string | null> {
   try {
-    // GoPlus security
     var secRes = await fetch("https://api.gopluslabs.io/api/v1/token_security/56?contract_addresses=" + address);
     var secData = await secRes.json();
     var secInfo = secData.result ? secData.result[address.toLowerCase()] : null;
@@ -242,15 +399,40 @@ export async function lookupToken(address: string): Promise<string | null> {
       if (secInfo.is_mintable === "1") parts.push("MINTABLE");
       var maxTax = Math.max(parseFloat(secInfo.buy_tax || "0"), parseFloat(secInfo.sell_tax || "0"));
       if (maxTax > 0) parts.push("tax " + (maxTax * 100).toFixed(0) + "%");
-      if (secInfo.is_honeypot !== "1" && secInfo.is_mintable !== "1" && maxTax <= 0.1) {
-        parts.push("security clean");
-      }
+      if (secInfo.is_honeypot !== "1" && secInfo.is_mintable !== "1" && maxTax <= 0.1) parts.push("security clean");
     }
 
     return parts.length > 0 ? parts.join(". ") : null;
-  } catch (e) {
-    return null;
-  }
+  } catch (e) { return null; }
+}
+
+// =====================================================
+// ANALYTICS SNAPSHOT (daily persistence)
+// =====================================================
+
+async function storeSnapshot(source: string, metrics: any): Promise<void> {
+  try {
+    var today = new Date().toISOString().split("T")[0];
+    await getDb().from("analytics_snapshots").upsert({
+      day: today,
+      source: source,
+      metrics: metrics,
+    }, { onConflict: "day,source" });
+  } catch (e) {}
+}
+
+// Get historical snapshots for trend comparison
+export async function getSnapshots(source: string, days: number = 7): Promise<any[]> {
+  try {
+    var since = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+    var { data } = await getDb()
+      .from("analytics_snapshots")
+      .select("day, metrics")
+      .eq("source", source)
+      .gte("day", since)
+      .order("day", { ascending: false });
+    return data || [];
+  } catch (e) { return []; }
 }
 
 // ── HELPERS ──
@@ -261,4 +443,8 @@ function formatNum(n: number): string {
   if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
   if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
   return n.toLocaleString();
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(function (resolve) { setTimeout(resolve, ms); });
 }
