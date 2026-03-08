@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 var SB = "https://seartddspffufwiqzwvh.supabase.co";
 var KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNlYXJ0ZGRzcGZmdWZ3aXF6d3ZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NzE5OTksImV4cCI6MjA4ODI0Nzk5OX0.0QtBuq9iMS0nuCsurfkatV22cse9nwRss_wLqsYsg_Y";
 var HEADERS = { apikey: KEY, Authorization: "Bearer " + KEY };
+var COUNT_HEADERS = { apikey: KEY, Authorization: "Bearer " + KEY, Prefer: "count=exact" };
 var VIDEO_URL = "https://seartddspffufwiqzwvh.supabase.co/storage/v1/object/public/assets/flagent-bg.mp4";
 var GITHUB_URL = "https://github.com/raretyperesearch-ux/flagentbnb";
 var BSCSCAN_WALLET = "https://bscscan.com/address/0x6c8C4C62183B61E9dd0095e821B0F857b555b32d";
@@ -24,6 +25,8 @@ export default function Home() {
   var stats = _stats[0], setStats = _stats[1];
   var _card = useState({ buys:0, sells:0, open:0, closed:0, scanned:0, winRate:"—" });
   var card = _card[0], setCard = _card[1];
+  var _positions = useState([]);
+  var positions = _positions[0], setPositions = _positions[1];
   var _live = useState(false);
   var live = _live[0], setLive = _live[1];
   var _tick = useState(0);
@@ -76,6 +79,7 @@ export default function Home() {
       }).catch(function() {});
     fetchStatus();
     fetchCard();
+    fetchPositions();
   }, []);
 
   function fetchStatus() {
@@ -94,19 +98,31 @@ export default function Home() {
       }).catch(function() {});
   }
 
+  function getCount(url) {
+    return fetch(url, { headers: COUNT_HEADERS, method: "HEAD" })
+      .then(function(r) {
+        var range = r.headers.get("content-range");
+        if (range) {
+          var parts = range.split("/");
+          return parseInt(parts[1]) || 0;
+        }
+        return 0;
+      }).catch(function() { return 0; });
+  }
+
   function fetchCard() {
     Promise.all([
-      fetch(SB + "/rest/v1/trades?status=eq.confirmed&side=eq.buy&select=id", { headers: HEADERS }).then(function(r) { return r.json(); }),
-      fetch(SB + "/rest/v1/trades?status=eq.confirmed&side=eq.sell&select=id", { headers: HEADERS }).then(function(r) { return r.json(); }),
-      fetch(SB + "/rest/v1/positions?status=eq.open&select=id", { headers: HEADERS }).then(function(r) { return r.json(); }),
+      getCount(SB + "/rest/v1/feed?type=eq.detect"),
+      getCount(SB + "/rest/v1/trades?status=eq.confirmed&side=eq.buy"),
+      getCount(SB + "/rest/v1/trades?status=eq.confirmed&side=eq.sell"),
+      getCount(SB + "/rest/v1/positions?status=eq.open"),
       fetch(SB + "/rest/v1/positions?status=eq.closed&select=id,pnl_percent", { headers: HEADERS }).then(function(r) { return r.json(); }),
-      fetch(SB + "/rest/v1/feed?type=eq.detect&select=id", { headers: HEADERS }).then(function(r) { return r.json(); }),
     ]).then(function(results) {
-      var buys = Array.isArray(results[0]) ? results[0].length : 0;
-      var sells = Array.isArray(results[1]) ? results[1].length : 0;
-      var open = Array.isArray(results[2]) ? results[2].length : 0;
-      var closed = Array.isArray(results[3]) ? results[3] : [];
-      var scanned = Array.isArray(results[4]) ? results[4].length : 0;
+      var scanned = results[0];
+      var buys = results[1];
+      var sells = results[2];
+      var open = results[3];
+      var closed = Array.isArray(results[4]) ? results[4] : [];
       var wins = 0;
       for (var i = 0; i < closed.length; i++) {
         if (closed[i].pnl_percent > 0) wins++;
@@ -114,6 +130,14 @@ export default function Home() {
       var wr = closed.length > 0 ? Math.round((wins / closed.length) * 100) + "%" : "—";
       setCard({ buys: buys, sells: sells, open: open, closed: closed.length, scanned: scanned, winRate: wr });
     }).catch(function() {});
+  }
+
+  function fetchPositions() {
+    fetch(SB + "/rest/v1/positions?status=eq.open&select=token_symbol,pnl_percent,current_multiplier,cost_bnb&order=pnl_percent.desc", { headers: HEADERS })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (Array.isArray(d)) setPositions(d);
+      }).catch(function() {});
   }
 
   useEffect(function() {
@@ -136,7 +160,7 @@ export default function Home() {
         }).catch(function() {});
       fetchStatus();
     }, 3000);
-    var cardPoll = setInterval(fetchCard, 30000);
+    var cardPoll = setInterval(function() { fetchCard(); fetchPositions(); }, 30000);
     return function() { clearInterval(poll); clearInterval(cardPoll); };
   }, []);
 
@@ -158,9 +182,20 @@ export default function Home() {
     return { o: 0.25, c: len };
   }
 
+  function fmtPnl(n) {
+    var v = parseFloat(n) || 0;
+    return (v >= 0 ? "+" : "") + v.toFixed(1) + "%";
+  }
+
   var walletUrl = stats.wallet
     ? "https://bscscan.com/address/" + stats.wallet
     : BSCSCAN_WALLET;
+
+  // Calculate total invested in open positions
+  var totalInvested = 0;
+  for (var pi = 0; pi < positions.length; pi++) {
+    totalInvested += parseFloat(positions[pi].cost_bnb) || 0;
+  }
 
   return (
     <div style={{ height: "100dvh", background: "#050503", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
@@ -188,6 +223,7 @@ export default function Home() {
       <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", background: "radial-gradient(ellipse at 50% 45%, #c9a84c0a 0%, transparent 55%)" }}/>
       <div style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none", background: "linear-gradient(90deg, #05050399 0%, transparent 30%, transparent 70%, #05050399 100%)" }}/>
 
+      {/* HEADER */}
       <div style={{ position: "relative", zIndex: 2, padding: "24px 20px 0", textAlign: "center" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 6 }}>
           <span style={{ fontFamily: "'Cinzel',serif", fontSize: 16, fontWeight: 700, letterSpacing: "0.22em", color: "#c9a84c", opacity: 0.7 }}>FLAGENT</span>
@@ -213,21 +249,40 @@ export default function Home() {
         </div>
       </div>
 
+      {/* FROST CARD */}
       {showCard && (
         <div style={{
-          position: "relative", zIndex: 3, margin: "12px auto 0", maxWidth: 360, width: "calc(100% - 40px)",
-          background: "rgba(12, 11, 8, 0.65)",
+          position: "relative", zIndex: 3, margin: "12px auto 0", maxWidth: 380, width: "calc(100% - 32px)",
+          background: "rgba(12, 11, 8, 0.7)",
           backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
           border: "1px solid rgba(201, 168, 76, 0.1)", borderRadius: 8,
-          padding: "14px 18px", animation: "cardIn 0.3s ease-out",
+          padding: "14px 16px", animation: "cardIn 0.3s ease-out",
+          maxHeight: "50vh", overflowY: "auto",
         }}>
-          <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.2em", color: "#c9a84c", opacity: 0.5, marginBottom: 10 }}>
-            SESSION STATS
+
+          {/* WALLET */}
+          <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.2em", color: "#c9a84c", opacity: 0.5, marginBottom: 8 }}>
+            WALLET
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px 12px", fontFamily: "'IBM Plex Mono',monospace" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "'IBM Plex Mono',monospace", marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 7, color: "#3a3530", letterSpacing: "0.15em", marginBottom: 2 }}>BALANCE</div>
+              <div style={{ fontSize: 15, color: "#c9a84c" }}>{stats.bal} BNB</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 7, color: "#3a3530", letterSpacing: "0.15em", marginBottom: 2 }}>DEPLOYED</div>
+              <div style={{ fontSize: 15, color: "#6b6255" }}>{totalInvested.toFixed(2)} BNB</div>
+            </div>
+          </div>
+
+          {/* STATS GRID */}
+          <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.2em", color: "#c9a84c", opacity: 0.5, marginBottom: 8 }}>
+            SESSION
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px 12px", fontFamily: "'IBM Plex Mono',monospace", marginBottom: 14 }}>
             <div>
               <div style={{ fontSize: 7, color: "#3a3530", letterSpacing: "0.15em", marginBottom: 2 }}>SCANNED</div>
-              <div style={{ fontSize: 13, color: "#6b6255" }}>{card.scanned}</div>
+              <div style={{ fontSize: 13, color: "#6b6255" }}>{card.scanned.toLocaleString()}</div>
             </div>
             <div>
               <div style={{ fontSize: 7, color: "#3a3530", letterSpacing: "0.15em", marginBottom: 2 }}>BUYS</div>
@@ -250,9 +305,39 @@ export default function Home() {
               <div style={{ fontSize: 13, color: "#7a9a5a" }}>{card.winRate}</div>
             </div>
           </div>
+
+          {/* HOLDINGS */}
+          {positions.length > 0 && (
+            <div>
+              <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.2em", color: "#c9a84c", opacity: 0.5, marginBottom: 8 }}>
+                HOLDINGS ({positions.length})
+              </div>
+              {positions.map(function(p, idx) {
+                var pnl = parseFloat(p.pnl_percent) || 0;
+                var mult = parseFloat(p.current_multiplier) || 1;
+                var isUp = pnl > 0;
+                return (
+                  <div key={idx} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    fontFamily: "'IBM Plex Mono',monospace",
+                    padding: "4px 0",
+                    borderBottom: idx < positions.length - 1 ? "1px solid rgba(58, 53, 48, 0.3)" : "none",
+                  }}>
+                    <span style={{ fontSize: 10, color: "#6b6255", maxWidth: "55%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {p.token_symbol}
+                    </span>
+                    <span style={{ fontSize: 10, color: isUp ? "#7a9a5a" : "#6a4a3a" }}>
+                      {mult.toFixed(2)}x {fmtPnl(pnl)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
+      {/* COMMAND LINES */}
       <div style={{ flex: 1, position: "relative", zIndex: 2, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", padding: "0 16px 44px", maxWidth: 540, margin: "0 auto", width: "100%" }}>
         {lines.map(function(l) {
           var s = getStyle(l);
@@ -285,6 +370,7 @@ export default function Home() {
         })}
       </div>
 
+      {/* FOOTER */}
       <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 20px 16px" }}>
         <div style={{ display: "flex", justifyContent: "center", gap: 20, fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.15em" }}>
           <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#5a5347", transition: "opacity 0.2s" }}>
