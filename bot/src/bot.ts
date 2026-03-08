@@ -26,7 +26,7 @@ var TP1 = parseFloat(process.env.TAKE_PROFIT_1 || "1.5");
 var TP2 = parseFloat(process.env.TAKE_PROFIT_2 || "2.0");
 var SL = parseFloat(process.env.STOP_LOSS || "0.6");
 var TIME_STOP = parseInt(process.env.TIME_STOP_MINUTES || "30");
-var MONITOR_MS = 10000;
+var MONITOR_MS = 60000;
 var HEARTBEAT_MS = 30000;
 
 // --------------- CONTRACTS ---------------
@@ -305,6 +305,7 @@ interface Pos {
   cost: string;
   time: Date;
   halfSold: boolean;
+  lastFeedTime: number;
 }
 
 var positions: Map<string, Pos> = new Map();
@@ -577,9 +578,6 @@ async function evaluate(
 
   var buyerCount = recentBuyers.get(key) || 0;
 
-  // =====================================================
-  // THE BRAIN: Claude decides BUY or SKIP
-  // =====================================================
   var decision = await decide(
     tokenName || "UNKNOWN",
     tokenSymbol || "???",
@@ -589,14 +587,12 @@ async function evaluate(
   );
 
   if (decision.action === "SKIP") {
-    // Only show skips that had some traction — dont spam ghost tokens
     if (bondingProgress > 10 || buyerCount > 3) {
       await feed(tokenSymbol + " — " + decision.reason, "reject", token, tokenSymbol);
     }
     return;
   }
 
-  // Claude said BUY — log the conviction
   await feed(decision.reason, "thought", token, tokenSymbol);
   await feed("buying " + tokenSymbol + " — " + BUY_AMOUNT + " BNB", "action", token, tokenSymbol);
 
@@ -631,6 +627,7 @@ async function evaluate(
     var pos: Pos = {
       addr: token, name: tokenName || "", symbol: tokenSymbol || "", platform: platform,
       entryPrice: entryPrice, tokens: bal, cost: BUY_AMOUNT, time: new Date(), halfSold: false,
+      lastFeedTime: Date.now(),
     };
     positions.set(key, pos);
 
@@ -751,7 +748,16 @@ async function monitor(): Promise<void> {
 
       var pnl = (mult - 1) * 100;
       var pnlStr = (pnl >= 0 ? "+" : "") + pnl.toFixed(1) + "%";
-      await feed(pos.symbol + " " + mult.toFixed(2) + "x (" + pnlStr + ")", "monitor", pos.addr, pos.symbol);
+
+      // Only write to feed every 5 minutes per position to avoid spam
+      var now = Date.now();
+      var sinceLastFeed = now - (pos.lastFeedTime || 0);
+      if (sinceLastFeed >= 300000) {
+        await feed(pos.symbol + " " + mult.toFixed(2) + "x (" + pnlStr + ")", "monitor", pos.addr, pos.symbol);
+        pos.lastFeedTime = now;
+      }
+
+      // Still update DB every cycle for accuracy
       await db.from("positions").update({ pnl_percent: pnl, current_multiplier: mult, updated_at: new Date().toISOString() }).eq("token_address", pos.addr);
 
       if (mult >= TP1 && !pos.halfSold) {
@@ -865,3 +871,7 @@ async function main(): Promise<void> {
 }
 
 main().catch(function (e) { console.error("fatal:", e); process.exit(1); });
+
+
+
+
