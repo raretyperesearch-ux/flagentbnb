@@ -4,10 +4,19 @@
 // =====================================================
 
 import { TwitterApi, type TweetV2, type UserV2 } from "twitter-api-v2";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { FlagentMemory } from "./x-memory.js";
 import { lookupToken, gatherResearch } from "./x-research.js";
 
 var ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
+var SUPABASE_URL = "https://seartddspffufwiqzwvh.supabase.co";
+var SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || "";
+
+var replyDb: SupabaseClient;
+function getReplyDb(): SupabaseClient {
+  if (!replyDb) replyDb = createClient(SUPABASE_URL, SUPABASE_KEY);
+  return replyDb;
+}
 
 // ── SOUL (REPLY PERSONA) ──
 
@@ -434,4 +443,118 @@ export async function processMentions(
     console.error("[reply] mention processing failed:", e.message || e);
     return lastMentionId;
   }
+}
+
+// =====================================================
+// REPLY TO OWN TWEETS — organic engagement
+// Checks replies under Flagent's recent tweets, picks 1-2 interesting ones
+// =====================================================
+
+export async function checkOwnTweetReplies(
+  client: TwitterApi,
+  memory: FlagentMemory
+): Promise<number> {
+  var repliesSent = 0;
+
+  try {
+    var me = await client.v2.me();
+    var myId = me.data.id;
+
+    // get last 5 own tweets from the last 6 hours
+    var sixHoursAgo = new Date(Date.now() - 6 * 3600000).toISOString();
+    var { data: ownTweets } = await getReplyDb()
+      .from("own_tweets")
+      .select("*")
+      .gte("created_at", sixHoursAgo)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    if (!ownTweets || ownTweets.length === 0) return 0;
+
+    for (var ot of ownTweets) {
+      if (repliesSent >= 2) break; // max 2 per cycle
+
+      try {
+        // search for replies to this tweet using conversation_id
+        var search = await client.v2.search("conversation_id:" + ot.tweet_id + " -from:" + myId, {
+          max_results: 10,
+          "tweet.fields": ["created_at", "author_id", "text", "in_reply_to_user_id"],
+          "user.fields": ["username"],
+          expansions: ["author_id"],
+        });
+
+        if (!search.data?.data || search.data.data.length === 0) continue;
+
+        var replies = search.data.data;
+        var users = new Map<string, string>();
+        if (search.data.includes?.users) {
+          for (var u of search.data.includes.users) {
+            users.set(u.id, u.username);
+          }
+        }
+
+        // filter out ones we already replied to
+        var alreadyReplied = new Set(ot.replied_to_ids || []);
+
+        // find interesting replies — longer than 20 chars, not just "gm" or emoji spam
+        var candidates = replies.filter(function (r: any) {
+          if (alreadyReplied.has(r.id)) return false;
+          if (r.author_id === myId) return false;
+          var cleanText = r.text.replace(/@\w+/g, "").trim();
+          if (cleanText.length < 15) return false;
+          return true;
+        });
+
+        if (candidates.length === 0) continue;
+
+        // pick 1 random interesting reply (not always the first one — feels more organic)
+        var pickIdx = Math.floor(Math.random() * Math.min(candidates.length, 3));
+        var picked = candidates[pickIdx];
+        var authorHandle = users.get(picked.author_id || "") || "unknown";
+
+        console.log("[own-reply] found reply under own tweet from @" + authorHandle + ": " + picked.text.slice(0, 60));
+
+        // generate reply using the same reply engine
+        var replyText = await generateReply(
+          picked.text,
+          authorHandle,
+          memory
+        );
+
+        if (replyText) {
+          await client.v2.reply(replyText, picked.id);
+          repliesSent++;
+          console.log("[own-reply] → @" + authorHandle + ": " + replyText.slice(0, 60));
+
+          // mark as replied to
+          var updatedIds = [...(ot.replied_to_ids || []), picked.id];
+          await getReplyDb()
+            .from("own_tweets")
+            .update({ replied_to_ids: updatedIds })
+            .eq("tweet_id", ot.tweet_id);
+
+          await memory.remember({
+            type: "interaction",
+            content: "replied under own tweet to @" + authorHandle + ": " + picked.text.slice(0, 80),
+            context: "own-reply:" + picked.id,
+            importance: 4,
+          });
+
+          // organic gap — 20-40 seconds
+          await new Promise(function (r) { setTimeout(r, 20000 + Math.random() * 20000); });
+        }
+      } catch (searchErr: any) {
+        if (searchErr.code === 429) {
+          console.log("[own-reply] rate limited, stopping");
+          break;
+        }
+        // search might fail for some tweets — just skip
+        continue;
+      }
+    }
+  } catch (e: any) {
+    console.error("[own-reply] error:", e.message || e);
+  }
+
+  return repliesSent;
 }

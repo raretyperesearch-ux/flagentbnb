@@ -14,7 +14,7 @@ import {
   refreshFlagentStats,
   type ResearchDrop,
 } from "./x-research.js";
-import { processMentions } from "./x-replies.js";
+import { processMentions, checkOwnTweetReplies } from "./x-replies.js";
 import {
   getSentimentContext, checkSentimentContradictions,
   checkWatchlistForQTs, generateQT, postQT,
@@ -635,24 +635,32 @@ async function generateTweet(trigger: PostTrigger, memory: FlagentMemory): Promi
 
 async function postTweet(client: TwitterApi, text: string, image?: Buffer | null): Promise<string | null> {
   try {
+    var tweetId: string | null = null;
+
     if (image) {
       try {
         var mediaId = await client.v1.uploadMedia(image, { mimeType: "image/png" });
         var result = await client.v2.tweet({ text: text, media: { media_ids: [mediaId] } });
         console.log("[x-engine] posted with image: " + text.slice(0, 60));
-        return result.data.id;
+        tweetId = result.data.id;
       } catch (imgErr: any) {
-        // image upload failed — post without image
         console.error("[x-engine] image upload failed, posting text only:", imgErr.message || imgErr);
         var fallback = await client.v2.tweet(text);
         console.log("[x-engine] posted (no image): " + text.slice(0, 60));
-        return fallback.data.id;
+        tweetId = fallback.data.id;
       }
     } else {
       var res = await client.v2.tweet(text);
       console.log("[x-engine] posted: " + text.slice(0, 60));
-      return res.data.id;
+      tweetId = res.data.id;
     }
+
+    // store in own_tweets so we can check replies later
+    if (tweetId) {
+      try { await db.from("own_tweets").insert({ tweet_id: tweetId, tweet_text: text.slice(0, 200) }); } catch (e) {}
+    }
+
+    return tweetId;
   } catch (e: any) {
     console.error("[x-engine] post failed:", e.message || e);
     if (e.code === 429) { console.log("[x-engine] rate limited, pausing 15 min."); await sleep(900000); }
@@ -841,8 +849,31 @@ async function main(): Promise<void> {
   console.log("  hunting with words and images...");
   console.log("");
 
+  // ── OWN TWEET REPLY LOOP ──
+  // Every 10 min, check replies under own tweets, respond to 1-2
+  // 50% chance per cycle to even check — keeps it unpredictable and organic
+  async function ownReplyLoop(): Promise<void> {
+    while (true) {
+      try {
+        await sleep(600000); // 10 min
+        if (!canReply()) continue;
+        if (Math.random() > 0.5) continue; // 50% skip — not every cycle
+
+        var sent = await checkOwnTweetReplies(twitter, memory);
+        if (sent > 0) {
+          for (var i = 0; i < sent; i++) recordReply();
+          console.log("[own-reply] replied to " + sent + " under own tweets. " + getBudgetStatus());
+        }
+      } catch (e) {
+        console.error("[own-reply] loop error:", e);
+        await sleep(60000);
+      }
+    }
+  }
+
   postLoop();
   mentionLoop();
+  ownReplyLoop();
   memoryLoop();
   cleanupLoop();
   statsLoop();
