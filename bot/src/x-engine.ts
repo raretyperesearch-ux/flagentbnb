@@ -32,7 +32,7 @@ var SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || "";
 var MENTION_CHECK_MS = parseInt(process.env.X_MENTION_CHECK_MS || "300000"); // 5 min between mention checks
 var MEMORY_INGEST_MS = 600000;
 var MEMORY_CLEANUP_MS = 3600000;
-var TRIGGER_CHECK_MS = 180000;
+var TRIGGER_CHECK_MS = 120000; // check for posting triggers every 2 min
 
 // ── RATE LIMIT BUDGET (Basic tier — 3,000/month = ~100/day) ──
 
@@ -457,8 +457,8 @@ async function checkTriggers(memory: FlagentMemory): Promise<PostTrigger | null>
 
   if (freshTrades.length >= 2) {
     triggers.push({ type: "trade", urgency: 7, context: "Multiple trades:\n" + freshTrades.map(function (t) { return "- " + t.content; }).join("\n") });
-  } else if (freshTrades.length === 1 && Math.random() < 0.4) {
-    triggers.push({ type: "trade", urgency: 4, context: "Recent trade: " + freshTrades[0].content });
+  } else if (freshTrades.length === 1 && Math.random() < 0.6) {
+    triggers.push({ type: "trade", urgency: 5, context: "Recent trade: " + freshTrades[0].content });
   }
 
   var research = await gatherResearch();
@@ -472,16 +472,16 @@ async function checkTriggers(memory: FlagentMemory): Promise<PostTrigger | null>
 
   var tradingCtx = await memory.getTradingContext();
   var metaCtx = await memory.getMetaContext();
-  if ((tradingCtx.length > 20 || metaCtx.length > 20) && Math.random() < 0.3) {
-    triggers.push({ type: "curiosity", urgency: 3, context: tradingCtx + "\n" + metaCtx });
+  if ((tradingCtx.length > 20 || metaCtx.length > 20) && Math.random() < 0.6) {
+    triggers.push({ type: "curiosity", urgency: 5, context: tradingCtx + "\n" + metaCtx });
   }
 
-  if (Math.random() < 0.05) {
+  if (Math.random() < 0.15) {
     var bscHealth = await fetchBSCHealth();
-    if (bscHealth) triggers.push({ type: "ecosystem", urgency: 2, context: bscHealth.data + (metaCtx ? "\n" + metaCtx : "") });
+    if (bscHealth) triggers.push({ type: "ecosystem", urgency: 4, context: bscHealth.data + (metaCtx ? "\n" + metaCtx : "") });
   }
 
-  if (triggers.length === 0 && freshTrades.length === 0 && Date.now() - budget.lastPostTime > 7200000) {
+  if (triggers.length === 0 && freshTrades.length === 0 && Date.now() - budget.lastPostTime > 2700000) {
     triggers.push({
       type: "curiosity", urgency: 6,
       context: "Quiet market. 2+ hours silence. " + (tradingCtx || "No recent trades.") + "\nObserve the silence.",
@@ -574,12 +574,21 @@ async function generateTweet(trigger: PostTrigger, memory: FlagentMemory): Promi
     context = sentimentCtx + "\n\n" + context;
   }
 
-  // ── ANTI-REPETITION (recent tweets check) ──
-  var recentPosts = await memory.search("tweet:", 8);
+  // ── ANTI-REPETITION (recent tweets from Supabase) ──
+  var recentPosts: any[] = [];
+  try {
+    var { data: recentTweets } = await db.from("agent_memory")
+      .select("content")
+      .like("context", "tweet:%")
+      .order("created_at", { ascending: false })
+      .limit(8);
+    recentPosts = recentTweets || [];
+  } catch (e) {}
+
   if (recentPosts.length > 0) {
-    context += "\n\nYOUR RECENT TWEETS (DO NOT repeat themes, phrasing, structure, or opening words. Each tweet should feel like a different person wrote it — same voice, different angle):\n";
+    context += "\n\nYOUR RECENT TWEETS (DO NOT repeat themes, phrasing, structure, or opening words. Each tweet must be completely different from these. Same voice, different angle, different topic if possible):\n";
     for (var rp of recentPosts) context += "- " + rp.content + "\n";
-    context += "\nIMPORTANT: If your recent tweets have been long, make this one short. If they've been short, go deeper. Vary the rhythm.";
+    context += "\nCRITICAL: You just tweeted about wins/losses/lessons. Do NOT mention 9 wins, 75 losses, or +235% again unless the numbers have actually changed. Find a DIFFERENT angle — a specific token, a pattern, a question, a CZ take, an AIXBT comparison. Anything except restating your win rate.";
   }
 
   if (!context.trim()) context = "No specific data. Draw from your BSC knowledge.";
@@ -718,8 +727,9 @@ async function main(): Promise<void> {
         console.log("[x-engine] trigger: " + trigger.type + " (urgency " + trigger.urgency + ")");
 
         var timeSincePost = Date.now() - budget.lastPostTime;
-        if (trigger.urgency <= 3 && timeSincePost < 3600000) continue;
-        if (trigger.urgency <= 5 && timeSincePost < 1800000) continue;
+        if (trigger.urgency <= 3 && timeSincePost < 1800000) continue;  // low: 30 min (was 1 hour)
+        if (trigger.urgency <= 5 && timeSincePost < 900000) continue;   // medium: 15 min (was 30 min)
+        // high urgency (6+): only needs MIN_POST_GAP_MS (10 min)
 
         var tweet = await generateTweet(trigger, memory);
         if (!tweet) continue;
