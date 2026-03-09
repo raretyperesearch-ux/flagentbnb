@@ -407,6 +407,144 @@ export async function lookupToken(address: string): Promise<string | null> {
 }
 
 // =====================================================
+// WALLET ANALYSIS (for reply analytics)
+// BSCScan API + GoPlus address security + Dune if available
+// =====================================================
+
+var BSCSCAN_API = "https://api.bscscan.com/api";
+var BSCSCAN_KEY = process.env.BSCSCAN_API_KEY || "YourApiKeyToken"; // free tier works without key for basic calls
+
+export async function lookupWallet(address: string): Promise<string | null> {
+  try {
+    var parts: string[] = [];
+
+    // ── 1. BNB BALANCE ──
+    try {
+      var balRes = await fetch(BSCSCAN_API + "?module=account&action=balance&address=" + address + "&apikey=" + BSCSCAN_KEY);
+      var balData = await balRes.json();
+      if (balData.status === "1" && balData.result) {
+        var bnb = parseFloat(balData.result) / 1e18;
+        parts.push("BNB balance: " + bnb.toFixed(4));
+      }
+    } catch (e) {}
+
+    // ── 2. RECENT TRANSACTIONS (last 10) ──
+    try {
+      var txRes = await fetch(BSCSCAN_API + "?module=account&action=txlist&address=" + address + "&startblock=0&endblock=99999999&page=1&offset=10&sort=desc&apikey=" + BSCSCAN_KEY);
+      var txData = await txRes.json();
+      if (txData.status === "1" && Array.isArray(txData.result)) {
+        var txns = txData.result;
+        parts.push(txns.length + " recent transactions");
+
+        // check for Four.Meme / Flap.sh interactions
+        var fmCount = 0;
+        var flapCount = 0;
+        var totalBnbSent = 0;
+        for (var tx of txns) {
+          var toLower = (tx.to || "").toLowerCase();
+          if (toLower === "0x5c952063c7fc8610ffdb798152d69f0b9550762b") fmCount++;
+          if (toLower === "0xe2ce6ab80874fa9fa2aae65d277dd6b8e65c9de0") flapCount++;
+          if (tx.from && tx.from.toLowerCase() === address.toLowerCase() && tx.value) {
+            totalBnbSent += parseFloat(tx.value) / 1e18;
+          }
+        }
+        if (fmCount > 0) parts.push("Four.Meme trades: " + fmCount + "/10 recent txns");
+        if (flapCount > 0) parts.push("Flap.sh trades: " + flapCount + "/10 recent txns");
+        if (totalBnbSent > 0) parts.push("BNB sent (last 10 txns): " + totalBnbSent.toFixed(3));
+
+        // wallet age from oldest txn in batch
+        if (txns.length > 0) {
+          var newest = new Date(parseInt(txns[0].timeStamp) * 1000);
+          var oldest = new Date(parseInt(txns[txns.length - 1].timeStamp) * 1000);
+          var daysBetween = Math.round((newest.getTime() - oldest.getTime()) / 86400000);
+          parts.push("Activity span (last 10): " + daysBetween + " days");
+        }
+      }
+    } catch (e) {}
+
+    // ── 3. TOKEN TRANSFERS (BEP-20, last 20) ──
+    try {
+      var tokRes = await fetch(BSCSCAN_API + "?module=account&action=tokentx&address=" + address + "&page=1&offset=20&sort=desc&apikey=" + BSCSCAN_KEY);
+      var tokData = await tokRes.json();
+      if (tokData.status === "1" && Array.isArray(tokData.result)) {
+        var tokens = tokData.result;
+        var uniqueTokens = new Set<string>();
+        var buyCount = 0;
+        var sellCount = 0;
+        for (var tok of tokens) {
+          uniqueTokens.add(tok.tokenSymbol || "???");
+          if (tok.to && tok.to.toLowerCase() === address.toLowerCase()) buyCount++;
+          else sellCount++;
+        }
+        parts.push("Tokens touched (last 20 transfers): " + uniqueTokens.size);
+        parts.push("Buys: " + buyCount + " | Sells: " + sellCount);
+
+        // list top tokens
+        var tokenNames = Array.from(uniqueTokens).slice(0, 5);
+        if (tokenNames.length > 0) parts.push("Recent tokens: " + tokenNames.join(", "));
+      }
+    } catch (e) {}
+
+    // ── 4. GOPLUS ADDRESS SECURITY ──
+    try {
+      var secRes = await fetch("https://api.gopluslabs.io/api/v1/address_security/" + address + "?chain_id=56");
+      var secData = await secRes.json();
+      var secInfo = secData.result;
+      if (secInfo) {
+        var flags: string[] = [];
+        if (secInfo.honeypot_related_address === "1") flags.push("HONEYPOT RELATED");
+        if (secInfo.phishing_activities === "1") flags.push("PHISHING");
+        if (secInfo.blacklist_doubt === "1") flags.push("BLACKLISTED");
+        if (secInfo.stealing_attack === "1") flags.push("STEALING ATTACK");
+        if (secInfo.malicious_mining_activities === "1") flags.push("MALICIOUS MINING");
+        if (flags.length > 0) {
+          parts.push("SECURITY FLAGS: " + flags.join(", "));
+        } else {
+          parts.push("Address security: clean");
+        }
+      }
+    } catch (e) {}
+
+    // ── 5. DUNE WALLET QUERY (if configured) ──
+    var duneWalletId = parseInt(process.env.DUNE_QUERY_WALLET_ANALYSIS || "0");
+    if (duneWalletId) {
+      try {
+        // check cache first
+        var cacheKey = "wallet_" + address.toLowerCase().slice(0, 10);
+        var cached = await getCached(cacheKey);
+        if (!cached) {
+          var rows = await duneQuery(duneWalletId);
+          if (rows && rows.length > 0) {
+            await setCache(cacheKey, rows, 300000); // 5 min cache
+            cached = rows;
+          }
+        }
+        if (cached && Array.isArray(cached) && cached.length > 0) {
+          var row = cached[0];
+          if (row.total_trades) parts.push("Dune: " + row.total_trades + " total trades");
+          if (row.total_volume_bnb) parts.push("Total volume: " + row.total_volume_bnb.toFixed(2) + " BNB");
+          if (row.win_rate) parts.push("Win rate: " + (row.win_rate * 100).toFixed(0) + "%");
+          if (row.pnl_bnb) parts.push("PnL: " + (row.pnl_bnb >= 0 ? "+" : "") + row.pnl_bnb.toFixed(3) + " BNB");
+        }
+      } catch (e) {}
+    }
+
+    // ── SUMMARY ──
+    if (parts.length === 0) return "Could not fetch data for this wallet.";
+
+    // check if it's Flagent's own wallet
+    if (address.toLowerCase() === "0x6c8c4c62183b61e9dd0095e821b0f857b555b32d") {
+      parts.unshift("This is MY wallet. Everything here is my trading history.");
+    }
+
+    return parts.join("\n");
+  } catch (e) {
+    console.error("[research] wallet lookup failed:", e);
+    return null;
+  }
+}
+
+// =====================================================
 // ANALYTICS SNAPSHOT (daily persistence)
 // =====================================================
 

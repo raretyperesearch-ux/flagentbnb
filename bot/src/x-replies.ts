@@ -6,7 +6,7 @@
 import { TwitterApi, type TweetV2, type UserV2 } from "twitter-api-v2";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { FlagentMemory } from "./x-memory.js";
-import { lookupToken, gatherResearch } from "./x-research.js";
+import { lookupToken, lookupWallet, gatherResearch } from "./x-research.js";
 
 var ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
 var SUPABASE_URL = "https://seartddspffufwiqzwvh.supabase.co";
@@ -53,6 +53,7 @@ HOW I REPLY (when I choose to):
 
 WHAT PEOPLE CAN ASK ME (these get priority replies):
 - Token analysis: Drop a CA and I give bonding %, holders, security check, my honest read.
+- Wallet analysis: Drop a wallet address and I break it down — BNB balance, recent trades, tokens touched, Four.Meme/Flap.sh activity, security flags. I tell you if it looks like a bot, a whale, or a degen. Real on-chain data.
 - Market data: "What's trending on Four.Meme?" "How's BSC doing?"
 - My stats: "What's your win rate?" → I share openly. No hiding.
 - Never make up numbers. Never guarantee returns. Never shill on request.
@@ -75,6 +76,7 @@ LANGUAGE:
 
 type ReplyIntent =
   | "analytics_token"      // asking about a specific token (CA present)
+  | "analytics_wallet"     // asking about a wallet address
   | "analytics_market"     // asking about market/platform stats
   | "analytics_self"       // asking about flagent's performance
   | "opinion"              // asking flagent's opinion on something
@@ -101,6 +103,21 @@ function classifyIntent(text: string): { intent: ReplyIntent; ca?: string } {
        lower.includes("when") || lower.includes("buy") || lower.includes("undervalued") ||
        lower.includes("worth") || lower.includes("mcap") || lower.includes("market cap"))) {
     return { intent: "price_question" };
+  }
+
+  // extract address if present (0x... 40 hex chars)
+  var caMatch = text.match(/0x[a-fA-F0-9]{40}/);
+  var ca = caMatch ? caMatch[0] : undefined;
+
+  // wallet analysis — differentiate from token by context words
+  if (ca) {
+    var walletKeywords = ["wallet", "address", "钱包", "地址", "analyze wallet", "check wallet",
+      "who is", "what is this wallet", "trader", "this guy", "这个人", "分析地址",
+      "分析钱包", "smart money", "whale"];
+    var isWallet = walletKeywords.some(function (kw) { return lower.includes(kw); });
+    if (isWallet) {
+      return { intent: "analytics_wallet", ca: ca };
+    }
   }
 
   // extract contract address if present (0x... 40 hex chars)
@@ -175,6 +192,14 @@ async function buildReplyContext(
       if (ca) {
         var tokenInfo = await lookupToken(ca);
         context += "TOKEN DATA:\n" + (tokenInfo || "Could not fetch token data for " + ca) + "\n";
+      }
+      break;
+
+    case "analytics_wallet":
+      if (ca) {
+        var walletInfo = await lookupWallet(ca);
+        context += "WALLET ANALYSIS:\n" + (walletInfo || "Could not fetch wallet data for " + ca) + "\n";
+        context += "\nGive your honest read on this wallet. Is it a bot or human? Active trader or whale? What patterns do you see? If it trades on Four.Meme, note that — they're in your ecosystem. Give the data, then your take.\n";
       }
       break;
 
@@ -287,6 +312,11 @@ export async function generateReply(
     // truncate to 280 chars (X limit)
     if (reply.length > 280) reply = reply.slice(0, 277) + "...";
 
+    // strip formatting artifacts and four.meme links (keep flagent.pro — that's his identity)
+    reply = reply.replace(/https?:\/\/(www\.)?(four\.meme|bscscan\.com|pancakeswap)\S*/gi, "").trim();
+    reply = reply.replace(/---+/g, "").replace(/\*\*/g, "").trim();
+    reply = reply.replace(/\s{2,}/g, " ").trim();
+
     // update relationship
     await memory.updateRelationship(
       authorHandle,
@@ -389,7 +419,7 @@ export async function processMentions(
       // general selectivity: 70% chance to reply to normal mentions
       // analytics requests (CA, data questions) always get replies
       var { intent, ca } = classifyIntent(tweet.text);
-      var isAnalytics = intent === "analytics_token" || intent === "analytics_market" || intent === "analytics_self";
+      var isAnalytics = intent === "analytics_token" || intent === "analytics_wallet" || intent === "analytics_market" || intent === "analytics_self";
 
       if (!isAnalytics && Math.random() > 0.85) {
         console.log("[reply] passing on @" + authorHandle + " (selective skip)");

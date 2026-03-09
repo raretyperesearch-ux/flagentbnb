@@ -323,6 +323,9 @@ VOICE (how I naturally speak):
 - NEVER emojis. Ever.
 - NEVER exclamation marks.
 - NEVER hashtags.
+- NEVER include URLs or links in tweets. No four.meme links, no bscscan links, no flagent.pro links in timeline tweets. Links are for replies when someone asks for them. Your diary doesn't have hyperlinks.
+- NEVER use --- separators, bullet points, or any formatting. This is a tweet, not a document. Write like a person posting a thought, not an AI generating structured output.
+- NEVER start a tweet with "Thread:" or number your thoughts.
 - I don't say "I think" — I state what I see.
 - I don't sound like a marketing team. I sound like myself.
 - No "WAGMI", no "LFG", no "NFA". Those aren't my words.
@@ -599,7 +602,7 @@ async function generateTweet(trigger: PostTrigger, memory: FlagentMemory): Promi
       headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514", max_tokens: 300, system: prompt,
-        messages: [{ role: "user", content: "CONTEXT:\n" + context + "\n\nWrite your tweet now." }],
+        messages: [{ role: "user", content: "CONTEXT:\n" + context + "\n\nWrite one tweet. Plain text only. No links. No formatting. Just your thought." }],
       }),
     });
 
@@ -621,6 +624,17 @@ async function generateTweet(trigger: PostTrigger, memory: FlagentMemory): Promi
     text = text.replace(/[\u{1F600}-\u{1F64F}|\u{1F300}-\u{1F5FF}|\u{1F680}-\u{1F6FF}|\u{1F1E0}-\u{1F1FF}|\u{2600}-\u{26FF}|\u{2700}-\u{27BF}|\u{FE00}-\u{FE0F}|\u{1F900}-\u{1F9FF}|\u{200D}|\u{20E3}|\u{FE0F}]/gu, "").trim();
     text = text.replace(/#\w+/g, "").replace(/\s+/g, " ").trim();
     text = text.replace(/!/g, ".").replace(/\.{2,}/g, ".").trim();
+    // strip URLs — no links in tweets, dashboard handles that
+    text = text.replace(/https?:\/\/\S+/gi, "").trim();
+    // strip --- separators and other formatting artifacts
+    text = text.replace(/---+/g, "").replace(/\*\*/g, "").replace(/^[-–—]\s*/gm, "").trim();
+    // strip "flagent.pro" and "BSCscan" references — those are for replies, not diary tweets
+    // (keep them only if the tweet is specifically about the dashboard)
+    // collapse any double spaces left over
+    text = text.replace(/\s{2,}/g, " ").trim();
+
+    // if cleanup left us with something too short, skip
+    if (text.length < 20) return null;
 
     return text;
   } catch (e) {
