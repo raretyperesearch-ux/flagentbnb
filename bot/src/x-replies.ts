@@ -295,8 +295,8 @@ export async function generateReply(
 // ── MENTION PROCESSOR ──
 // MAX 2 replies per cycle. 30 second gaps. Selective — not every mention deserves a response.
 
-var MAX_REPLIES_PER_CYCLE = 2;
-var REPLY_GAP_MS = 30000; // 30 seconds between replies
+var MAX_REPLIES_PER_CYCLE = 4;
+var REPLY_GAP_MS = 15000; // 15 seconds between replies
 
 export async function processMentions(
   client: TwitterApi,
@@ -382,7 +382,7 @@ export async function processMentions(
       var { intent, ca } = classifyIntent(tweet.text);
       var isAnalytics = intent === "analytics_token" || intent === "analytics_market" || intent === "analytics_self";
 
-      if (!isAnalytics && Math.random() > 0.7) {
+      if (!isAnalytics && Math.random() > 0.85) {
         console.log("[reply] passing on @" + authorHandle + " (selective skip)");
         continue;
       }

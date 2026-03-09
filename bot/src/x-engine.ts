@@ -34,12 +34,12 @@ var MEMORY_INGEST_MS = 600000;
 var MEMORY_CLEANUP_MS = 3600000;
 var TRIGGER_CHECK_MS = 180000;
 
-// ── RATE LIMIT BUDGET (free tier) ──
+// ── RATE LIMIT BUDGET (Basic tier — 3,000/month = ~100/day) ──
 
-var DAILY_POST_BUDGET = 35;
-var DAILY_REPLY_BUDGET = 15;
-var HOURLY_CAP = 4;
-var MIN_POST_GAP_MS = 15 * 60 * 1000;
+var DAILY_POST_BUDGET = 60;
+var DAILY_REPLY_BUDGET = 40;
+var HOURLY_CAP = 8;
+var MIN_POST_GAP_MS = 10 * 60 * 1000; // 10 min between posts
 
 interface BudgetState {
   postsToday: number;
