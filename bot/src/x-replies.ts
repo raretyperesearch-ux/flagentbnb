@@ -332,9 +332,9 @@ export async function generateReply(
 }
 
 // ── MENTION PROCESSOR ──
-// MAX 2 replies per cycle. 30 second gaps. Selective — not every mention deserves a response.
+// MAX 2 replies per cycle. Selective — daily budget is 5 replies total.
 
-var MAX_REPLIES_PER_CYCLE = 4;
+var MAX_REPLIES_PER_CYCLE = 2;
 var REPLY_GAP_MS = 15000; // 15 seconds between replies
 
 export async function processMentions(

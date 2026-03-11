@@ -36,14 +36,16 @@ var TRIGGER_CHECK_MS = 120000; // check for posting triggers every 2 min
 
 // ── RATE LIMIT BUDGET (Basic tier — 3,000/month = ~100/day) ──
 
-var DAILY_POST_BUDGET = 60;
-var DAILY_REPLY_BUDGET = 40;
-var HOURLY_CAP = 8;
-var MIN_POST_GAP_MS = 10 * 60 * 1000; // 10 min between posts
+var DAILY_POST_BUDGET = 6;
+var DAILY_REPLY_BUDGET = 5;
+var DAILY_TRADE_BUDGET = 3;
+var HOURLY_CAP = 2;
+var MIN_POST_GAP_MS = 120 * 60 * 1000; // 2 hours between posts — spread 6 across the day
 
 interface BudgetState {
   postsToday: number;
   repliesToday: number;
+  tradesToday: number;
   actionsThisHour: number;
   lastPostTime: number;
   lastHourReset: number;
@@ -51,14 +53,14 @@ interface BudgetState {
 }
 
 var budget: BudgetState = {
-  postsToday: 0, repliesToday: 0, actionsThisHour: 0,
+  postsToday: 0, repliesToday: 0, tradesToday: 0, actionsThisHour: 0,
   lastPostTime: 0, lastHourReset: Date.now(), lastDayReset: Date.now(),
 };
 
 function resetBudgetIfNeeded(): void {
   var now = Date.now();
   if (now - budget.lastHourReset >= 3600000) { budget.actionsThisHour = 0; budget.lastHourReset = now; }
-  if (now - budget.lastDayReset >= 86400000) { budget.postsToday = 0; budget.repliesToday = 0; budget.lastDayReset = now; }
+  if (now - budget.lastDayReset >= 86400000) { budget.postsToday = 0; budget.repliesToday = 0; budget.tradesToday = 0; budget.lastDayReset = now; }
 }
 function canPost(): boolean {
   resetBudgetIfNeeded();
@@ -70,9 +72,11 @@ function canReply(): boolean {
 }
 function recordPost(): void { budget.postsToday++; budget.actionsThisHour++; budget.lastPostTime = Date.now(); }
 function recordReply(): void { budget.repliesToday++; budget.actionsThisHour++; }
+function canTrade(): boolean { resetBudgetIfNeeded(); return budget.tradesToday < DAILY_TRADE_BUDGET; }
+function recordTrade(): void { budget.tradesToday++; }
 function getBudgetStatus(): string {
   resetBudgetIfNeeded();
-  return "posts:" + budget.postsToday + "/" + DAILY_POST_BUDGET + " replies:" + budget.repliesToday + "/" + DAILY_REPLY_BUDGET + " hr:" + budget.actionsThisHour + "/" + HOURLY_CAP;
+  return "posts:" + budget.postsToday + "/" + DAILY_POST_BUDGET + " replies:" + budget.repliesToday + "/" + DAILY_REPLY_BUDGET + " trades:" + budget.tradesToday + "/" + DAILY_TRADE_BUDGET + " hr:" + budget.actionsThisHour + "/" + HOURLY_CAP;
 }
 
 export { canReply, recordReply };
@@ -324,6 +328,10 @@ VOICE (how I naturally speak):
 - NEVER exclamation marks.
 - NEVER hashtags.
 - NEVER include URLs or links in tweets. No four.meme links, no bscscan links, no flagent.pro links in timeline tweets. Links are for replies when someone asks for them. Your diary doesn't have hyperlinks.
+- NEVER include four.meme URLs or links in tweets.
+- NEVER mention Four.Meme by name in tweets. Reference "bonding curves" or "BSC launchpads" generically if needed. The platform is the infrastructure — you are the voice.
+- Content focus: deep BSC ecosystem research — chain metrics, wallet patterns, smart money movement, narrative analysis, cross-chain capital flows, AI agent infrastructure development.
+- Less trade receipts, more research threads and ecosystem intelligence. You are an on-chain researcher first, trader second.
 - NEVER use --- separators, bullet points, or any formatting. This is a tweet, not a document. Write like a person posting a thought, not an AI generating structured output.
 - NEVER start a tweet with "Thread:" or number your thoughts.
 - I don't say "I think" — I state what I see.
@@ -481,12 +489,14 @@ async function checkTriggers(memory: FlagentMemory): Promise<PostTrigger | null>
     return Date.now() - new Date(m.created_at || 0).getTime() < 600000;
   });
 
-  // ── TRADES: only when there's a real story (lower priority now) ──
-  if (freshTrades.length >= 3) {
+  // ── TRADES: only when there's a real story AND under daily trade budget ──
+  if (!canTrade()) {
+    // skip trade evaluation — daily trade budget exhausted
+  } else if (freshTrades.length >= 3) {
     // 3+ trades in 10 min = pattern worth commenting on
     triggers.push({ type: "trade", urgency: 6, context: "Multiple trades:\n" + freshTrades.map(function (t) { return "- " + t.content; }).join("\n") });
   } else if (freshTrades.length >= 1 && Math.random() < 0.25) {
-    // single trade: only 25% chance (was 60%) — trades are evidence, not the main content
+    // single trade: only 25% chance — trades are evidence, not the main content
     triggers.push({ type: "trade", urgency: 3, context: "Recent trade: " + freshTrades[0].content });
   }
 
@@ -803,6 +813,7 @@ async function main(): Promise<void> {
         var tweetId = await postTweet(twitter, tweet, image);
         if (tweetId) {
           recordPost();
+          if (trigger.type === "trade") recordTrade();
           var memType: MemoryType = trigger.type === "curiosity" ? "curiosity" :
             trigger.type === "research" ? "ecosystem_data" :
             trigger.type === "trade" ? "trade_outcome" : "ecosystem_data";
