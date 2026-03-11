@@ -7,6 +7,8 @@ var HEADERS = { apikey: KEY, Authorization: "Bearer " + KEY };
 var COUNT_HEADERS = { apikey: KEY, Authorization: "Bearer " + KEY, Prefer: "count=exact" };
 var VIDEO_URL = "https://seartddspffufwiqzwvh.supabase.co/storage/v1/object/public/assets/flagent-bg.mp4";
 var GITHUB_URL = "https://github.com/raretyperesearch-ux/flagentbnb";
+var TELEGRAM_BOT = "https://t.me/Flagent_Bot";
+var PCS_BUY_URL = "https://pancakeswap.finance/swap?outputCurrency=0x1FF3506b0BC80c3CA027B6cEb7534FcfeDccFFFF";
 var BSCSCAN_WALLET = "https://bscscan.com/address/0x6c8C4C62183B61E9dd0095e821B0F857b555b32d";
 var TOKEN_URL = "https://four.meme/token/0x1ff3506b0bc80c3ca027b6ceb7534fcfedccffff";
 var X_URL = "https://x.com/flagentbnb";
@@ -198,7 +200,7 @@ export default function Home() {
   }
 
   return (
-    <div style={{ height: "100dvh", background: "#050503", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100dvh", background: "#050503", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <style>{
         "@keyframes breathe{0%,100%{opacity:.25}50%{opacity:.85}}" +
         "@keyframes cursor{0%,100%{opacity:1}50%{opacity:0}}" +
@@ -363,6 +365,81 @@ export default function Home() {
         })}
       </div>
 
+      {/* ── YOUR OWN BSC ASSISTANT ─────────────────────────────── */}
+      <div style={{
+        position: "relative", zIndex: 2,
+        borderTop: "1px solid rgba(201, 168, 76, 0.08)",
+        padding: "48px 20px 40px",
+        textAlign: "center",
+      }}>
+        <div style={{
+          fontFamily: "'Cinzel',serif", fontSize: 14, fontWeight: 700,
+          letterSpacing: "0.22em", color: "#c9a84c", opacity: 0.7, marginBottom: 16,
+        }}>
+          YOUR OWN BSC ASSISTANT
+        </div>
+        <div style={{
+          fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, lineHeight: 1.8,
+          color: "#6b6255", maxWidth: 440, margin: "0 auto 32px",
+        }}>
+          Flagent is autonomous. He trades on his own.<br/>
+          Now you can have your own assistant — one that listens to you.
+        </div>
+
+        <div style={{
+          display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16,
+          maxWidth: 540, margin: "0 auto 36px",
+        }}>
+          <div style={{ border: "1px solid rgba(201, 168, 76, 0.08)", borderRadius: 6, padding: "16px 12px" }}>
+            <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, letterSpacing: "0.2em", color: "#c9a84c", opacity: 0.7, marginBottom: 10 }}>
+              RESEARCH
+            </div>
+            <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, lineHeight: 1.7, color: "#4a4539" }}>
+              Drop a CA — get security, bonding curve, price, holders. Drop a wallet — get trade patterns.
+            </div>
+          </div>
+          <div style={{ border: "1px solid rgba(201, 168, 76, 0.08)", borderRadius: 6, padding: "16px 12px" }}>
+            <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, letterSpacing: "0.2em", color: "#c9a84c", opacity: 0.7, marginBottom: 10 }}>
+              TRADE
+            </div>
+            <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, lineHeight: 1.7, color: "#4a4539" }}>
+              Buy and sell on Four.Meme, Flap.sh, and PancakeSwap. Your wallet. Your keys. 5% slippage protection.
+            </div>
+          </div>
+          <div style={{ border: "1px solid rgba(201, 168, 76, 0.08)", borderRadius: 6, padding: "16px 12px" }}>
+            <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, letterSpacing: "0.2em", color: "#c9a84c", opacity: 0.7, marginBottom: 10 }}>
+              TRACK
+            </div>
+            <div style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 9, lineHeight: 1.7, color: "#4a4539" }}>
+              Live portfolio with real-time PnL. Set alerts. Withdraw anytime.
+            </div>
+          </div>
+        </div>
+
+        <div style={{
+          fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.25em",
+          color: "#c9a84c", opacity: 0.4, marginBottom: 20,
+        }}>
+          HOLD 25,000 $FLAGENT TO ACTIVATE
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+          <a href={TELEGRAM_BOT} target="_blank" rel="noopener noreferrer" style={{
+            fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, letterSpacing: "0.15em",
+            color: "#050503", background: "#c9a84c", padding: "10px 28px",
+            borderRadius: 4, transition: "opacity 0.2s",
+          }}>
+            OPEN TELEGRAM BOT
+          </a>
+          <a href={PCS_BUY_URL} target="_blank" rel="noopener noreferrer" style={{
+            fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.12em",
+            color: "#5a5347", transition: "opacity 0.2s",
+          }}>
+            Buy $FLAGENT on PancakeSwap
+          </a>
+        </div>
+      </div>
+
       <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 20px 16px" }}>
         <div style={{ display: "flex", justifyContent: "center", gap: 18, fontFamily: "'IBM Plex Mono',monospace", fontSize: 8, letterSpacing: "0.15em" }}>
           <a href={X_URL} target="_blank" rel="noopener noreferrer" style={{ color: "#5a5347", transition: "opacity 0.2s" }}>
@@ -376,6 +453,9 @@ export default function Home() {
           </a>
           <a href={walletUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#5a5347", transition: "opacity 0.2s" }}>
             BSCSCAN
+          </a>
+          <a href={TELEGRAM_BOT} target="_blank" rel="noopener noreferrer" style={{ color: "#5a5347", transition: "opacity 0.2s" }}>
+            TELEGRAM BOT
           </a>
         </div>
         <div style={{ marginTop: 8, fontFamily: "'IBM Plex Mono',monospace", fontSize: 7, letterSpacing: "0.3em", color: "#3a3530" }}>
