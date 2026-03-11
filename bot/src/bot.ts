@@ -28,6 +28,9 @@ var SL = parseFloat(process.env.STOP_LOSS || "0.6");
 var TIME_STOP = parseInt(process.env.TIME_STOP_MINUTES || "30");
 var MONITOR_MS = 60000;
 var HEARTBEAT_MS = 30000;
+var MAX_TRADES_PER_DAY = 3;
+var tradesToday = 0;
+var lastTradeReset = Date.now();
 
 // --------------- CONTRACTS ---------------
 
@@ -530,6 +533,10 @@ async function evaluate(
   tokenName?: string,
   tokenSymbol?: string
 ): Promise<void> {
+  // Daily trade cap — reset every 24h
+  if (Date.now() - lastTradeReset >= 86400000) { tradesToday = 0; lastTradeReset = Date.now(); }
+  if (tradesToday >= MAX_TRADES_PER_DAY) return;
+
   var key = token.toLowerCase();
   if (seen.has(key)) return;
   seen.add(key);
@@ -630,8 +637,9 @@ async function evaluate(
       lastFeedTime: Date.now(),
     };
     positions.set(key, pos);
+    tradesToday++;
 
-    await feed(fmtTokens(bal) + " " + tokenSymbol + " acquired", "confirm", token, tokenSymbol);
+    await feed(fmtTokens(bal) + " " + tokenSymbol + " acquired (" + tradesToday + "/" + MAX_TRADES_PER_DAY + " today)", "confirm", token, tokenSymbol);
     await logTrade(token, tokenName, tokenSymbol, platform, "buy", BUY_AMOUNT, bal.toString(), tx, "confirmed");
     await upsertPos(pos, 0);
     await think("Bought " + tokenSymbol + ". Position open. React.");
